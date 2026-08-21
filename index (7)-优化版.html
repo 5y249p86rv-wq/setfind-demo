@@ -1,0 +1,2589 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>人力资源中心座位查找</title>
+<meta name="description" content="快速找到人力同事的工位 · 搜索姓名或拼音首字母，即可看到精确位置">
+
+<!-- ====== PWA / iOS Add-to-Home-Screen ====== -->
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="180x180" href="icons/icon-180.png">
+<meta name="theme-color" content="#E0E5EC">
+
+<!-- iOS specific -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="座位查找">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152.png">
+<link rel="apple-touch-icon" sizes="167x167" href="icons/icon-167.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png">
+
+<!-- Web fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   Neumorphism (Soft UI) — Cool Grey System
+   - Single base color #E0E5EC. All depth from paired RGBA shadows.
+   - No borders anywhere. Rounded corners + soft shadows define edges.
+   ============================================================ */
+:root {
+  --bg:        #E0E5EC;            /* the "cool clay" surface */
+  --fg:        #3D4852;            /* primary text · 7.5:1 (WCAG AAA) */
+  --fg-muted:  #6B7280;            /* secondary    · 4.6:1 (WCAG AA)  */
+  --fg-faint:  #A0AEC0;            /* placeholders / disabled        */
+  --accent:    #6C63FF;            /* violet — CTAs & focus          */
+  --accent-soft: #8B84FF;
+  --accent-ink:  #4A42E0;
+  --teal:      #38B2AC;            /* teal — matched / "you found"   */
+  --danger:    #E04F5F;            /* red — "you are here" marker    */
+
+  /* Paired RGBA shadows — the physics of the system */
+  --sh-extra-lg:
+    14px 14px 28px rgb(163,177,198,0.65),
+   -14px -14px 28px rgba(255,255,255,0.65);
+  --sh-lg:
+    10px 10px 22px rgb(163,177,198,0.65),
+   -10px -10px 22px rgba(255,255,255,0.6);
+  --sh-md:
+     9px  9px 16px rgb(163,177,198,0.6),
+    -9px -9px 16px rgba(255,255,255,0.5);
+  --sh-sm:
+     5px  5px 10px rgb(163,177,198,0.6),
+    -5px -5px 10px rgba(255,255,255,0.5);
+  --sh-xs:
+     3px  3px  6px rgb(163,177,198,0.55),
+    -3px -3px  6px rgba(255,255,255,0.5);
+
+  --sh-inset-deep:
+    inset 10px 10px 20px rgb(163,177,198,0.7),
+    inset -10px -10px 20px rgba(255,255,255,0.6);
+  --sh-inset-md:
+    inset  6px  6px 12px rgb(163,177,198,0.6),
+    inset  -6px -6px 12px rgba(255,255,255,0.5);
+  --sh-inset-sm:
+    inset  3px  3px  6px rgb(163,177,198,0.6),
+    inset  -3px -3px  6px rgba(255,255,255,0.5);
+  --sh-inset-xs:
+    inset  2px  2px  4px rgb(163,177,198,0.5),
+    inset  -2px -2px  4px rgba(255,255,255,0.45);
+
+  /* Radii */
+  --r-card: 32px;   /* big cards / search bar */
+  --r-lg:   24px;   /* dropdowns              */
+  --r-md:   16px;   /* buttons / inputs       */
+  --r-sm:   12px;   /* small items / cells    */
+  --r-pill: 9999px; /* chips / tags           */
+
+  /* Type */
+  --font-display: "Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body:    "DM Sans", "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* Motion */
+  --ease:   cubic-bezier(0.25, 0.8, 0.25, 1);
+  --t-fast: 180ms;
+  --t-mid:  300ms;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; }
+body {
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  background: var(--bg);
+  color: var(--fg);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+}
+h1,h2,h3,h4 { font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; color: var(--fg); }
+button { font-family: inherit; cursor: pointer; }
+input, select, textarea { font-family: inherit; color: var(--fg); }
+::selection { background: rgba(108, 99, 255, 0.25); color: var(--fg); }
+
+/* ============================================================
+   App shell + page transitions
+   ============================================================ */
+.app { min-height: 100vh; position: relative; }
+
+.page {
+  position: absolute;
+  inset: 0;
+  transition: transform var(--t-mid) var(--ease), opacity 250ms var(--ease);
+  will-change: transform, opacity;
+}
+.page.hidden { transform: translateX(-100%); opacity: 0; pointer-events: none; }
+.page.center { transform: translateX(100%);  opacity: 0; pointer-events: none; }
+
+/* ============================================================
+   Page 1 — Home (search)
+   ============================================================ */
+
+/* Ambient floating pucks (showcase nested depth) */
+.puck {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+  opacity: 0.55;
+  z-index: 0;
+}
+.puck-a { width: 220px; height: 220px; top: 6%;  left: 8%;  background: var(--bg); box-shadow: var(--sh-lg);     }
+.puck-b { width: 130px; height: 130px; top: 12%; left: 12%; background: var(--bg); box-shadow: var(--sh-inset-md); }
+.puck-c { width: 60px;  height: 60px;  top: 18%; left: 16%; background: var(--bg); box-shadow: var(--sh-xs); }
+.puck-d { width: 180px; height: 180px; bottom: 8%; right: 8%; background: var(--bg); box-shadow: var(--sh-lg);  animation-delay: -2s; }
+.puck-e { width: 90px;  height: 90px;  bottom: 12%; right: 12%; background: var(--bg); box-shadow: var(--sh-inset-sm); }
+
+@keyframes float {
+  0%, 100% { transform: translateY(0)    rotate(0deg);   }
+  50%      { transform: translateY(-8px) rotate(2deg);   }
+}
+@keyframes float-soft {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+.float      { animation: float     6s var(--ease) infinite; }
+.float-soft { animation: float-soft 4s var(--ease) infinite; }
+
+.page-home {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.home-header {
+  position: relative;
+  text-align: center;
+  margin-bottom: 48px;
+  padding: 44px 20px 24px;
+}
+
+/* Spotlight rings — concentric pulsing halos behind the title */
+.home-header::before {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 380px; height: 380px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(108,99,255,0.08) 0%, rgba(108,99,255,0.03) 35%, transparent 62%);
+  animation: spotlightPulse 4s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+.home-header::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 280px; height: 280px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(108,99,255,0.1) 0%, transparent 52%);
+  animation: spotlightPulse 4s ease-in-out 1.3s infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.home-title {
+  font-size: clamp(34px, 7vw, 64px);
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--fg);
+  margin-bottom: 8px;
+  letter-spacing: -0.02em;
+  font-family: var(--font-display);
+  position: relative;
+  z-index: 1;
+  animation: titleFloat 5s ease-in-out infinite, titleReveal 800ms var(--ease) both;
+}
+.home-title .accent {
+  color: var(--accent);
+  display: inline-block;
+  position: relative;
+  animation: accentBreathe 2.8s ease-in-out infinite;
+}
+
+/* Animated gradient underline swoosh under the accent text */
+.home-title .accent::after {
+  content: '';
+  position: absolute;
+  bottom: -4px; left: 4%; right: 4%;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--accent-soft), var(--accent), var(--accent-soft), transparent);
+  border-radius: 3px;
+  animation: accentUnderline 2.8s ease-in-out infinite;
+}
+
+.home-subtitle {
+  font-size: 14px;
+  color: var(--fg-muted);
+  font-weight: 400;
+  position: relative;
+  z-index: 1;
+}
+
+/* Title ambient particles */
+.title-particle {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+}
+.title-particle.a { width: 6px;  height: 6px;  background: var(--accent); box-shadow: 0 0 10px rgba(108,99,255,0.5); top: 15%; left: 8%;  animation: particleFloatA 5s ease-in-out 0s   infinite; }
+.title-particle.b { width: 4px;  height: 4px;  background: var(--accent-soft); box-shadow: 0 0 8px  rgba(139,132,255,0.4); top: 70%; right: 6%; animation: particleFloatB 4.5s ease-in-out 0.5s infinite; }
+.title-particle.c { width: 5px;  height: 5px;  background: var(--accent); box-shadow: 0 0 10px rgba(108,99,255,0.45); top: 22%; right: 12%; animation: particleFloatA 5.5s ease-in-out 1s   infinite; }
+.title-particle.d { width: 3px;  height: 3px;  background: var(--accent-soft); box-shadow: 0 0 6px  rgba(139,132,255,0.35); top: 60%; left: 5%;  animation: particleFloatB 4.8s ease-in-out 1.5s infinite; }
+.title-particle.e { width: 4px;  height: 4px;  background: var(--accent); box-shadow: 0 0 9px  rgba(108,99,255,0.4); top: 8%;  left: 45%; animation: particleFloatC 6s   ease-in-out 0.3s infinite; }
+.title-particle.f { width: 5px;  height: 5px;  background: var(--accent-soft); box-shadow: 0 0 10px rgba(139,132,255,0.45); top: 80%; left: 48%; animation: particleFloatC 5.2s ease-in-out 1.8s infinite; }
+
+/* "快速找到" — staggered character bounce-in + periodic search wave */
+.search-action {
+  display: inline-block;
+  position: relative;
+  margin-right: 0.05em;
+}
+.search-char {
+  display: inline-block;
+}
+/* Each character: init bounce-in (once) + continuous bounce+wave cycle (infinite, staggered) */
+.search-action:not(.search-action-delayed) .search-char:nth-child(1) { animation: searchCharBounceIn 600ms var(--ease) 0s    both, searchCharCycle 5s ease-in-out 0.7s  infinite; }
+.search-action:not(.search-action-delayed) .search-char:nth-child(2) { animation: searchCharBounceIn 600ms var(--ease) 0.12s both, searchCharCycle 5s ease-in-out 0.85s infinite; }
+.search-action:not(.search-action-delayed) .search-char:nth-child(3) { animation: searchCharBounceIn 600ms var(--ease) 0.24s both, searchCharCycle 5s ease-in-out 1.0s  infinite; }
+.search-action:not(.search-action-delayed) .search-char:nth-child(4) { animation: searchCharBounceIn 600ms var(--ease) 0.36s both, searchCharCycle 5s ease-in-out 1.15s infinite; }
+
+/* "的工位" — continues after "快速找到" chars, same bounce+wave, offset by 0.48s */
+.search-action-delayed .search-char:nth-child(1) { animation: searchCharBounceIn 600ms var(--ease) 0.48s both, searchCharCycle 5s ease-in-out 1.3s  infinite; }
+.search-action-delayed .search-char:nth-child(2) { animation: searchCharBounceIn 600ms var(--ease) 0.60s both, searchCharCycle 5s ease-in-out 1.45s infinite; }
+.search-action-delayed .search-char:nth-child(3) { animation: searchCharBounceIn 600ms var(--ease) 0.72s both, searchCharCycle 5s ease-in-out 1.6s  infinite; }
+
+/* Blinking cursor — reinforces "type to search" mental model */
+.search-cursor {
+  display: inline-block;
+  width: 2.5px; height: 0.8em;
+  background: var(--accent);
+  margin-left: 1px;
+  margin-right: 2px;
+  vertical-align: baseline;
+  border-radius: 2px;
+  animation: cursorBlink 1s step-end infinite;
+}
+
+.home-content {
+  position: relative; z-index: 1;
+  width: 100%;
+  max-width: 600px;
+  animation: fadeInUp 600ms var(--ease) 200ms both;
+}
+
+/* Search input — original positioning, new neumorphic skin */
+.home-search { position: relative; margin-bottom: 32px; }
+
+.home-search-input {
+  width: 100%;
+  padding: 18px 120px 18px 56px;
+  font-size: 16px;
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--fg);
+  border: 0;
+  border-radius: var(--r-card);
+  box-shadow: var(--sh-inset-md);
+  outline: none;
+  cursor: text;                    /* iOS PWA: 必须有,否则首击可能只 focus 不弹键盘 */
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-appearance: none;
+  appearance: none;
+  touch-action: manipulation;
+  -webkit-touch-callout: default;
+  transition: box-shadow var(--t-mid) var(--ease);
+}
+.home-search-input::placeholder { color: var(--fg-faint); }
+.home-search-input:focus { box-shadow: var(--sh-inset-deep), 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
+
+/* Icon well — small inset circle that "cradles" an icon (showcase nested depth) */
+.icon-well {
+  background: var(--bg);
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-muted);
+  box-shadow: var(--sh-inset-sm);
+  flex-shrink: 0;
+}
+.search-icon-well {
+  position: absolute;
+  left: 18px; top: 50%;
+  transform: translateY(-50%);
+  width: 32px; height: 32px;
+}
+.home-search-icon { display: block; }
+
+.home-search-clear {
+  position: absolute;
+  right: 16px; top: 50%;
+  transform: translateY(-50%);
+  width: 32px; height: 32px;
+  border: 0;
+  background: var(--bg);
+  border-radius: 50%;
+  cursor: pointer;
+  display: none;
+  align-items: center; justify-content: center;
+  color: var(--fg-muted);
+  box-shadow: var(--sh-xs);
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.home-search-clear:hover  { color: var(--fg); transform: translateY(-50%) scale(1.05); box-shadow: var(--sh-sm); }
+.home-search-clear:active { box-shadow: var(--sh-inset-xs); transform: translateY(-50%) scale(0.96); }
+.home-search-clear.show { display: flex; }
+
+/* "你所在位置" hint — plain text, no chrome */
+.location-hint {
+  position: absolute;
+  right: 63px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--danger);
+  pointer-events: none;
+  z-index: 1;
+}
+.location-dot {
+  position: relative;
+  width: 10px; height: 10px;
+  background: var(--danger);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.location-dot::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--danger);
+  animation: locationPulse 1.5s var(--ease) infinite;
+}
+@keyframes locationPulse {
+  0%   { width: 10px; height: 10px; opacity: 1; }
+  100% { width: 28px; height: 28px; opacity: 0; }
+}
+
+/* Search suggestions dropdown */
+.search-suggestions {
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 0; right: 0;
+  background: var(--bg);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-extra-lg);
+  overflow: hidden;
+  z-index: 100;
+  display: none;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 8px;
+}
+.search-suggestions.show { display: block; animation: slideDown 220ms var(--ease); }
+
+.search-suggestion-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: box-shadow var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  border-radius: var(--r-sm);
+}
+.search-suggestion-item + .search-suggestion-item { margin-top: 2px; }
+.search-suggestion-item:hover { box-shadow: var(--sh-inset-xs); }
+
+.search-suggestion-item .avatar {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--accent);
+  background: var(--bg);
+  box-shadow: var(--sh-inset-sm);
+  flex-shrink: 0;
+}
+.search-suggestion-item .info { flex: 1; min-width: 0; }
+.search-suggestion-item .name { font-weight: 700; font-size: 15px; color: var(--fg); }
+.search-suggestion-item .dept { font-size: 13px; color: var(--fg-muted); }
+.search-suggestion-item .seat-badge {
+  padding: 4px 12px;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-display);
+  border-radius: var(--r-pill);
+  font-size: 13px; font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: var(--sh-inset-xs);
+  min-width: 44px; text-align: center;
+}
+
+.search-no-result {
+  padding: 24px; text-align: center;
+  color: var(--fg-muted);
+  font-size: 14px;
+}
+
+/* History section */
+.history-section {
+  background: var(--bg);
+  border-radius: var(--r-card);
+  padding: 20px;
+  box-shadow: var(--sh-lg);
+}
+.history-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px;
+}
+.history-title {
+  font-size: 13px; font-weight: 700;
+  color: var(--fg-muted);
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--font-display);
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+.history-clear {
+  font-size: 12px; font-weight: 600;
+  color: var(--fg-muted);
+  background: var(--bg);
+  border: 0;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: var(--r-pill);
+  box-shadow: var(--sh-xs);
+  transition: color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.history-clear:hover  { color: var(--accent); box-shadow: var(--sh-sm); }
+.history-clear:active { box-shadow: var(--sh-inset-xs); }
+
+.history-list {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  min-height: 44px;
+}
+.history-empty { color: var(--fg-faint); font-size: 13px; padding: 8px 0; }
+
+.history-item {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px;
+  background: var(--bg);
+  border: 0;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-mid) var(--ease), color var(--t-fast) var(--ease);
+  font-size: 14px; font-weight: 500;
+  color: var(--fg);
+  box-shadow: var(--sh-xs);
+}
+.history-item:hover  { transform: translateY(-1px); box-shadow: var(--sh-sm); color: var(--accent); }
+.history-item:active { transform: translateY(0.5px); box-shadow: var(--sh-inset-xs); }
+.history-item .avatar-mini {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  font-size: 11px; font-weight: 700;
+  color: var(--accent);
+  background: var(--bg);
+  box-shadow: var(--sh-inset-xs);
+  flex-shrink: 0;
+}
+.history-item .remove-btn {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--bg);
+  box-shadow: var(--sh-inset-xs);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px;
+  margin-left: 4px;
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  color: var(--fg-muted);
+}
+.history-item:hover .remove-btn { opacity: 1; }
+.history-item .remove-btn:hover { color: var(--danger); }
+
+/* Quick-enter button */
+.quick-enter-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%;
+  padding: 16px;
+  margin-top: 24px;
+  background: linear-gradient(145deg, var(--accent-soft) 0%, var(--accent) 60%, var(--accent-ink) 100%);
+  color: #fff;
+  border: 0;
+  border-radius: var(--r-md);
+  font-size: 15px; font-weight: 700;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-mid) var(--ease);
+  box-shadow:
+    6px 6px 12px rgb(163,177,198,0.6),
+    -6px -6px 12px rgba(255,255,255,0.5),
+    inset 0 1px 0 rgba(255,255,255,0.25);
+}
+.quick-enter-btn:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    9px 9px 18px rgb(163,177,198,0.65),
+    -9px -9px 18px rgba(255,255,255,0.55),
+    inset 0 1px 0 rgba(255,255,255,0.3);
+}
+.quick-enter-btn:active {
+  transform: translateY(0.5px);
+  box-shadow:
+    inset 4px 4px 8px rgb(74,66,224,0.45),
+    inset -4px -4px 8px rgba(139,132,255,0.3);
+}
+.quick-enter-btn svg { transition: transform var(--t-mid) var(--ease); }
+.quick-enter-btn:hover svg { transform: rotate(90deg); }
+
+/* ============================================================
+   Page 2 — Map
+   ============================================================ */
+.page-map { padding: 16px; background: var(--bg); display: flex; flex-direction: column; align-items: center; overflow-x: auto; }
+
+.map-header {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+}
+.map-title-area { flex: 1; }
+.map-title {
+  font-size: 18px; font-weight: 800;
+  color: var(--fg);
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+.map-subtitle { font-size: 13px; color: var(--fg-muted); margin-top: 2px; }
+
+.back-btn {
+  width: 44px; height: 44px;
+  border: 0;
+  background: var(--bg);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--fg);
+  box-shadow: var(--sh-sm);
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-mid) var(--ease), color var(--t-fast) var(--ease);
+  flex-shrink: 0;
+}
+.back-btn:hover  { transform: translateY(-1px); box-shadow: var(--sh-md); color: var(--accent); }
+.back-btn:active { transform: translateY(0.5px); box-shadow: var(--sh-inset-sm); }
+.back-btn:focus-visible { outline: none; box-shadow: var(--sh-sm), 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
+
+.map-person-info {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  background: var(--bg);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-md);
+}
+.map-person-info .avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--accent);
+  background: var(--bg);
+  box-shadow: var(--sh-inset-sm);
+  flex-shrink: 0;
+}
+.map-person-info .info { flex: 1; min-width: 0; }
+.map-person-info .name { font-family: var(--font-display); font-size: 14px; font-weight: 700; color: var(--fg); }
+.map-person-info .nav-text { font-size: 12px; color: var(--fg-muted); margin-top: 2px; }
+.map-person-info .seat-badge {
+  font-family: var(--font-display);
+  font-size: 20px; font-weight: 800;
+  color: var(--accent);
+  background: var(--bg);
+  border-radius: var(--r-sm);
+  box-shadow: var(--sh-inset-sm);
+  flex-shrink: 0;
+  width: 44px; height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  letter-spacing: 0.02em;
+}
+
+/* Floor plan card */
+.floor-plan {
+  position: relative;
+  background: var(--bg);
+  border-radius: var(--r-card);
+  box-shadow: var(--sh-lg);
+  padding: 16px;
+  transform: rotate(90deg) translateX(-240px);
+  transform-origin: center;
+  overflow: visible;
+  max-width: 90vh;
+  width: auto;
+}
+
+/* Path SVG overlay */
+.fp-path-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+  overflow: visible;
+}
+.fp-path-dashed {
+  fill: none;
+  stroke: var(--danger);
+  stroke-width: 2.5;
+  stroke-dasharray: 8 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.8;
+}
+.fp-path-pulse {
+  fill: none;
+  stroke: var(--danger);
+  stroke-width: 2.5;
+  stroke-dasharray: 8 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.5;
+  animation: pathFlow 1.6s linear infinite;
+}
+@keyframes pathFlow {
+  to { stroke-dashoffset: -14; }
+}
+
+.fp-top { display: flex; gap: 12px; margin-bottom: 12px; }
+
+.fp-room-lg {
+  background: var(--bg);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-inset-sm);
+  padding: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700;
+  color: var(--fg-muted);
+  font-family: var(--font-display);
+  letter-spacing: 0.02em;
+}
+.fp-room-big { width: 340px; min-width: 340px; }
+
+.fp-room-salary {
+  background: var(--bg);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-inset-sm);
+  padding: 12px;
+  width: 200px; position: relative;
+  display: grid; gap: 6px;
+  grid-template-columns: 56px auto;
+  padding-top: 28px;
+}
+.fp-room-salary-label {
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  transform: translateX(calc(-50% + 6px));
+  font-size: 12px; font-weight: 700;
+  color: var(--fg-muted);
+  font-family: var(--font-display);
+  letter-spacing: 13px;
+  z-index: 2;
+}
+.fp-room-salary > .desk:nth-child(2) { grid-column: 1; grid-row: 1; min-width: 56px; width: 56px; transform: translate(15px, -5px); }
+.fp-room-salary > .desk:nth-child(3) { grid-column: 1; grid-row: 2; min-width: 56px; width: 56px; transform: translate(15px, -5px); }
+.fp-room-salary > .desk:nth-child(4) { grid-column: 2; grid-row: 1 / 3; min-width: 56px; width: 56px; height: 102px; margin-left: 22px; align-self: start; transform: translate(15px, -5px); }
+
+/* 薪酬组 desk: hover/active 时叠加偏移而非覆盖，避免弹跳 */
+.fp-room-salary > .desk.occ:hover  { transform: translate(15px, -6px); }
+.fp-room-salary > .desk.occ:active { transform: translate(15px, -4.5px); box-shadow: var(--sh-inset-xs); }
+.fp-room-salary > .desk:active      { transform: translate(15px, -4.5px); }
+
+.fp-main {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: repeat(12, 1fr);
+  gap: 6px;
+}
+
+/* Manager cells — original absolute layout preserved.
+   Empty = pressed-in well. Occupied = extruded. */
+.fp-mgr-cell {
+  background: var(--bg);
+  border-radius: var(--r-sm);
+  box-shadow: var(--sh-inset-sm);            /* default = empty well */
+  padding: 8px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 4px;
+  position: relative;
+  grid-column: 1;
+  min-width: 88px;
+  cursor: pointer;
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-mid) var(--ease);
+  color: var(--fg);
+}
+.fp-mgr-cell:not(.occ):not(.selected):not(.matched):hover { box-shadow: var(--sh-inset-md); }
+.fp-mgr-cell.occ { box-shadow: var(--sh-sm); }
+.fp-mgr-cell.occ:hover  { transform: translateY(-1px); box-shadow: var(--sh-md); }
+.fp-mgr-cell:active { transform: translateY(0.5px); }
+.fp-mgr-cell.occ { /* no color fill — keep the soft surface */ }
+.fp-mgr-cell.selected { box-shadow: var(--sh-inset-md); }
+.fp-mgr-cell.selected .mgr-name-slot { color: var(--accent); font-weight: 700; }
+.fp-mgr-cell.dimmed { opacity: 0.25; }
+.fp-mgr-cell .mgr-name-slot { font-size: 11px; color: var(--fg-muted); font-weight: 500; letter-spacing: 0.01em; transform: rotate(270deg); display: inline-block; }
+.fp-mgr-cell .empty-hint { color: var(--fg-faint); font-size: 11px; }
+.fp-mgr-cell:hover .empty-hint { color: var(--fg-muted); }
+
+/* ORIGINAL absolute positioning for M1/M2/M3 — kept intact */
+.fp-main > .fp-mgr-cell:nth-child(1) { left: 78px; top: 0px;   height: 117px; }
+.fp-main > .fp-mgr-cell:nth-child(2) { left: 78px; top: 3px;   height: 117px; }
+.fp-main > .fp-mgr-cell:nth-child(3) { left: 78px; top: 6px;   height: 117px; width: 110px; }
+
+/* ============================================================
+   Matched — "Found you!" 
+   Three layers of attention:
+     1) Teal-tinted background fill (anchors the eye)
+     2) Solid Teal ring + breathing outer halo (the spotlight)
+     3) Radar ping (concentric wave expanding outward)
+     4) A tiny "✓" check badge anchored to the corner
+   ============================================================ */
+.fp-mgr-cell.matched, .desk.matched {
+  background: rgba(56, 178, 172, 0.12);
+  z-index: 5;
+  position: relative;
+  color: var(--teal-ink);
+}
+.fp-mgr-cell.matched .mgr-name-slot,
+.desk.matched .person-name-slot {
+  color: var(--teal-ink);
+  font-weight: 800;
+}
+
+/* Manager cell — bigger ring + bigger glow */
+.fp-mgr-cell.matched {
+  box-shadow:
+    var(--sh-sm),
+    0 0 0 4px rgba(56, 178, 172, 0.9),
+    0 0 0 9px rgba(56, 178, 172, 0.18),
+    0 0 40px rgba(56, 178, 172, 0.6);
+  animation: matchedPulseMgr 1.3s ease-in-out infinite;
+}
+/* Regular desk — slightly smaller scale of the same treatment */
+.desk.matched {
+  box-shadow:
+    var(--sh-xs),
+    0 0 0 3px rgba(56, 178, 172, 0.9),
+    0 0 0 7px rgba(56, 178, 172, 0.18),
+    0 0 28px rgba(56, 178, 172, 0.6);
+  animation: matchedPulseDesk 1.3s ease-in-out infinite;
+}
+
+@keyframes matchedPulseMgr {
+  0%, 100% {
+    box-shadow:
+      var(--sh-sm),
+      0 0 0 4px  rgba(56, 178, 172, 0.9),
+      0 0 0 9px  rgba(56, 178, 172, 0.18),
+      0 0 40px rgba(56, 178, 172, 0.6);
+  }
+  50% {
+    box-shadow:
+      var(--sh-md),
+      0 0 0 6px  rgba(56, 178, 172, 1),
+      0 0 0 16px rgba(56, 178, 172, 0.28),
+      0 0 64px rgba(56, 178, 172, 0.95);
+  }
+}
+@keyframes matchedPulseDesk {
+  0%, 100% {
+    box-shadow:
+      var(--sh-xs),
+      0 0 0 3px rgba(56, 178, 172, 0.9),
+      0 0 0 7px rgba(56, 178, 172, 0.18),
+      0 0 28px rgba(56, 178, 172, 0.6);
+  }
+  50% {
+    box-shadow:
+      var(--sh-sm),
+      0 0 0 5px  rgba(56, 178, 172, 1),
+      0 0 0 14px rgba(56, 178, 172, 0.28),
+      0 0 52px rgba(56, 178, 172, 0.95);
+  }
+}
+
+/* Radar ping — expanding ring */
+.fp-mgr-cell.matched::before, .desk.matched::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  transform-origin: center;
+  animation: matchedPing 1.3s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes matchedPing {
+  0%   { transform: scale(1);    opacity: 1; }
+  100% { transform: scale(1.6);  opacity: 0; }
+}
+
+/* (Corner check badge removed per design feedback) */
+
+.fp-desk-grid {
+  grid-column: 2;
+  grid-row: 1 / -1;
+  display: flex; flex-direction: column;
+  gap: 6px;
+}
+.fp-desk-row { display: flex; gap: 6px; }
+.fp-desk-row-label { display: none; }
+
+/* Desks — original sizing kept.
+   Empty seats = pressed-in "office nook" wells.
+   Occupied seats = extruded (someone's there). */
+.desk {
+  background: var(--bg);
+  border-radius: 8px;
+  box-shadow: var(--sh-inset-sm);            /* default = empty well */
+  padding: 4px;
+  cursor: pointer;
+  position: relative;
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-mid) var(--ease);
+  min-width: 72px;
+  height: 56px;
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: var(--fg);
+}
+/* Hover an empty well → deeper inset (signals "press to add someone") */
+.desk:not(.occ):not(.selected):not(.matched):hover {
+  box-shadow: var(--sh-inset-md);
+}
+/* Occupied: extruded (someone sitting here) */
+.desk.occ {
+  background: var(--bg);
+  box-shadow: var(--sh-xs);
+}
+.desk.occ:hover  { transform: translateY(-1px); box-shadow: var(--sh-sm); }
+.desk.occ:active { transform: translateY(0.5px); box-shadow: var(--sh-inset-xs); }
+.desk:active { transform: translateY(0.5px); }
+.desk.selected { box-shadow: var(--sh-inset-md); }
+.desk.selected .person-name-slot { color: var(--accent); font-weight: 700; }
+.desk.dimmed { opacity: 0.25; }
+.desk .person-name-slot { font-size: 11px; color: var(--fg-muted); font-weight: 500; letter-spacing: 0.01em; transform: rotate(270deg); display: inline-block; }
+.desk .empty-hint { color: var(--fg-faint); font-size: 10px; }
+.desk:not(.occ):hover .empty-hint { color: var(--fg-muted); }
+
+/* "你在这里" marker */
+.you-here-marker {
+  position: relative;
+  width: 14px; height: 14px;
+  background: var(--danger);
+  border-radius: 50px;
+  left: 10px;
+  align-self: center;
+  margin-left: 4px;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 4px var(--bg), 0 0 16px rgba(224,79,95,0.55);
+}
+.you-here-marker::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  border: 3px solid var(--danger);
+  animation: youHerePulse 1.5s var(--ease) infinite;
+  pointer-events: none;
+}
+@keyframes youHerePulse {
+  0%   { transform: translate(-50%, -50%) scale(1);   opacity: 0.7; }
+  100% { transform: translate(-50%, -50%) scale(3.7); opacity: 0;   }
+}
+
+/* ORIGINAL entrance (hidden) — preserved */
+.fp-entrance { display: none; }
+.fp-entrance-icon {
+  width: 18px; height: 14px;
+  background: var(--bg);
+  box-shadow: var(--sh-inset-xs);
+  border-radius: 3px;
+  position: relative;
+}
+.fp-entrance-icon::after {
+  content: ''; position: absolute; top: -6px; left: 50%; transform: translateX(-50%);
+  width: 0; height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 6px solid var(--fg-muted);
+}
+.fp-entrance-text { font-size: 10px; font-weight: 700; color: var(--fg-muted); font-family: var(--font-display); letter-spacing: 0.1em; text-transform: uppercase; }
+
+/* Elevator corridor: an inset channel filling the gap between desk rows */
+.corridor-channel {
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 600px;
+  width: 260px;
+  background: var(--bg);
+  border-radius: var(--r-sm);
+  box-shadow: var(--sh-inset-sm);
+  display: flex; flex-direction: column;
+  align-items: center;
+  padding-top: 6px;
+  pointer-events: none;
+}
+.corridor-arrows-wrap {
+  flex: 1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 3px;
+}
+.corridor-label {
+  font-family: var(--font-display);
+  font-size: 14px; font-weight: 700;
+  color: var(--fg-muted);
+  letter-spacing: 0.8em;
+  padding-left: 0.8em; /* visual centering compensation for letter-spacing */
+}
+.corridor-arrows {
+  display: flex; gap: 4px; align-items: center;
+}
+.elevator-arrow {
+  color: var(--teal);
+  font-size: 13px;
+  text-shadow: 0 0 6px rgba(56,178,172,0.7), 0 0 12px rgba(56,178,172,0.45);
+  animation: arrowFlow 1.5s var(--ease) infinite;
+}
+.elevator-arrow:nth-child(1) { animation-delay: 0s;   }
+.elevator-arrow:nth-child(2) { animation-delay: 0.2s; }
+.elevator-arrow:nth-child(3) { animation-delay: 0.4s; }
+.elevator-arrow:nth-child(4) { animation-delay: 0.6s; }
+.elevator-arrow:nth-child(5) { animation-delay: 0.8s; }
+@keyframes arrowFlow {
+  0%, 100% { opacity: 0.3; transform: translateX(4px); }
+  50%      { opacity: 1;   transform: translateX(0);   }
+}
+
+/* Right-click menu */
+.context-menu {
+  position: fixed;
+  background: var(--bg);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-extra-lg);
+  padding: 6px;
+  z-index: 1000;
+  display: none;
+  min-width: 160px;
+  list-style: none;
+}
+.context-menu.show { display: block; animation: slideDown 200ms var(--ease); }
+.context-menu li {
+  list-style: none;
+  padding: 10px 16px;
+  font-size: 14px; font-weight: 500;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  white-space: nowrap;
+  color: var(--fg);
+  transition: box-shadow var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.context-menu li:hover { box-shadow: var(--sh-inset-xs); color: var(--accent); }
+.context-menu li.danger { color: var(--danger); }
+.context-menu li.danger:hover { color: #C73E4E; }
+
+/* Overlays (admin / form) */
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(48, 56, 72, 0.35);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 900;
+  display: none;
+  align-items: center; justify-content: center;
+  padding: 16px;
+}
+.overlay.show { display: flex; animation: fadeIn 220ms var(--ease); }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.admin-panel {
+  background: var(--bg);
+  border-radius: var(--r-card);
+  width: 90vw; max-width: 680px; max-height: 85vh;
+  display: flex; flex-direction: column;
+  box-shadow: var(--sh-extra-lg);
+  overflow: hidden;
+  animation: panelIn 320ms var(--ease);
+}
+@keyframes panelIn {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+.admin-header {
+  padding: 18px 22px;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0;
+}
+.admin-header h2 { font-size: 18px; font-weight: 800; font-family: var(--font-display); letter-spacing: -0.02em; }
+
+.admin-close {
+  width: 36px; height: 36px;
+  border: 0; border-radius: var(--r-sm);
+  background: var(--bg);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--fg-muted);
+  box-shadow: var(--sh-xs);
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.admin-close:hover  { color: var(--fg);   box-shadow: var(--sh-sm); transform: scale(1.05); }
+.admin-close:active { box-shadow: var(--sh-inset-xs); transform: scale(0.96); }
+
+.admin-body { padding: 8px 22px 22px; overflow: auto; flex: 1; }
+
+.admin-toolbar {
+  display: flex; gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.admin-toolbar button {
+  padding: 10px 16px;
+  border: 0; border-radius: var(--r-pill);
+  background: var(--bg);
+  font-size: 14px; font-weight: 600;
+  font-family: var(--font-body);
+  cursor: pointer;
+  color: var(--fg);
+  box-shadow: var(--sh-xs);
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.admin-toolbar button:hover  { transform: translateY(-1px); box-shadow: var(--sh-sm); }
+.admin-toolbar button:active { transform: translateY(0.5px); box-shadow: var(--sh-inset-xs); }
+.admin-toolbar button.primary {
+  background: linear-gradient(145deg, var(--accent-soft) 0%, var(--accent) 60%, var(--accent-ink) 100%);
+  color: #fff;
+  box-shadow:
+    4px 4px 8px rgb(163,177,198,0.6),
+    -4px -4px 8px rgba(255,255,255,0.5),
+    inset 0 1px 0 rgba(255,255,255,0.25);
+}
+.admin-toolbar button.primary:hover { transform: translateY(-1px); }
+.admin-toolbar button.primary:active {
+  box-shadow:
+    inset 3px 3px 6px rgb(74,66,224,0.45),
+    inset -3px -3px 6px rgba(139,132,255,0.3);
+}
+
+/* Table */
+.table-wrap { overflow-x: auto; }
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 8px;
+  font-size: 14px;
+}
+thead th {
+  font-family: var(--font-display);
+  font-size: 11px; font-weight: 700;
+  color: var(--fg-muted);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  padding: 4px 14px 8px;
+  text-align: left;
+}
+tbody tr {
+  background: var(--bg);
+  box-shadow: var(--sh-xs);
+  transition: box-shadow var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+tbody tr:hover { box-shadow: var(--sh-sm); transform: translateY(-1px); }
+tbody td { padding: 14px; vertical-align: middle; }
+tbody td:first-child { border-top-left-radius: var(--r-md); border-bottom-left-radius: var(--r-md); }
+tbody td:last-child  { border-top-right-radius: var(--r-md); border-bottom-right-radius: var(--r-md); }
+tbody td:nth-child(3) .seat-badge {
+  display: inline-block; min-width: 44px; text-align: center;
+}
+
+.action-btn {
+  padding: 6px 14px;
+  border: 0; border-radius: var(--r-pill);
+  background: var(--bg);
+  font-size: 13px; font-weight: 600;
+  font-family: var(--font-body);
+  cursor: pointer;
+  color: var(--fg);
+  box-shadow: var(--sh-xs);
+  margin-right: 6px;
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.action-btn:hover  { transform: translateY(-1px); box-shadow: var(--sh-sm); }
+.action-btn:active { transform: translateY(0.5px); box-shadow: var(--sh-inset-xs); }
+.action-btn.danger  { color: var(--danger); }
+.action-btn.danger:hover { color: #C73E4E; }
+
+/* Form */
+.form-row { margin-bottom: 14px; }
+.form-row label {
+  display: block;
+  font-size: 12px; font-weight: 700;
+  color: var(--fg-muted);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  margin-bottom: 8px;
+  font-family: var(--font-display);
+}
+.form-row input, .form-row select {
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 0;
+  border-radius: var(--r-sm);
+  font-size: 15px; font-family: var(--font-body);
+  outline: none;
+  box-shadow: var(--sh-inset-sm);
+  transition: box-shadow var(--t-mid) var(--ease);
+  appearance: none;
+  -webkit-appearance: none;
+}
+.form-row input::placeholder { color: var(--fg-faint); }
+.form-row input:focus, .form-row select:focus {
+  box-shadow: var(--sh-inset-md), 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+}
+.form-row select {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='1 1 6 6 11 1'/></svg>");
+  background-repeat: no-repeat; background-position: right 16px center; background-size: 12px 8px;
+  padding-right: 44px;
+}
+.form-error { font-size: 12px; color: var(--danger); margin-top: 6px; display: none; padding-left: 4px; }
+.form-error.show { display: block; }
+
+/* Footer */
+.footer {
+  text-align: center;
+  font-size: 12px;
+  color: var(--fg-faint);
+  margin-top: 20px;
+  padding-top: 20px;
+}
+.footer::before {
+  content: '';
+  display: block;
+  height: 1px; width: 80px;
+  margin: 0 auto 20px;
+  background: var(--bg);
+  box-shadow: var(--sh-inset-xs);
+  border-radius: 2px;
+}
+
+/* ============================================================
+   Title Spotlight Animations
+   ============================================================ */
+@keyframes spotlightPulse {
+  0%, 100% { opacity: 0.5; transform: translate(-50%, -50%) scale(0.92); }
+  50%      { opacity: 1;   transform: translate(-50%, -50%) scale(1.06); }
+}
+@keyframes accentBreathe {
+  0%, 100% {
+    text-shadow:
+      0 0 18px rgba(108,99,255,0.3),
+      0 0 36px rgba(108,99,255,0.12),
+      0 0 60px rgba(108,99,255,0.05);
+  }
+  50% {
+    text-shadow:
+      0 0 28px rgba(108,99,255,0.5),
+      0 0 56px rgba(108,99,255,0.22),
+      0 0 90px rgba(108,99,255,0.1);
+  }
+}
+@keyframes accentUnderline {
+  0%, 100% { opacity: 0.4; transform: scaleX(0.85); }
+  50%      { opacity: 1;   transform: scaleX(1); }
+}
+@keyframes titleFloat {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+@keyframes titleReveal {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+/* Particle float animations — organic drifting */
+@keyframes particleFloatA {
+  0%, 100% { opacity: 0;   transform: translate(0, 0);     }
+  20%      { opacity: 0.7; transform: translate(8px, -6px); }
+  50%      { opacity: 0.9; transform: translate(-4px, -14px); }
+  80%      { opacity: 0.4; transform: translate(-10px, -4px); }
+}
+@keyframes particleFloatB {
+  0%, 100% { opacity: 0;   transform: translate(0, 0);     }
+  25%      { opacity: 0.6; transform: translate(-6px, -10px); }
+  55%      { opacity: 0.85; transform: translate(10px, -6px); }
+  75%      { opacity: 0.35; transform: translate(4px, -16px); }
+}
+@keyframes particleFloatC {
+  0%, 100% { opacity: 0;   transform: translate(0, 0);     }
+  30%      { opacity: 0.7; transform: translate(-10px, -8px); }
+  60%      { opacity: 0.9; transform: translate(2px, -18px); }
+  85%      { opacity: 0.3; transform: translate(10px, -4px); }
+}
+
+/* Search char animations */
+@keyframes searchCharBounceIn {
+  0%   { opacity: 0; transform: translateY(28px) scale(0.3); }
+  50%  { opacity: 1; transform: translateY(-6px) scale(1.1); }
+  70%  { transform: translateY(3px) scale(0.94); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes searchCharCycle {
+  0%, 100% { transform: translateY(0) scale(1); color: var(--fg); }
+  /* Bounce phase */
+  4%  { transform: translateY(-10px) scale(1.13); }
+  8%  { transform: translateY(3px) scale(0.94); }
+  13% { transform: translateY(0) scale(1); }
+  /* Color wave ripple */
+  32% { color: var(--accent); }
+  52% { color: var(--fg); }
+}
+@keyframes cursorBlink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0; }
+}
+
+/* Animations */
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-16px); }
+  to   { opacity: 1; transform: translateY(0);     }
+}
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+/* ============================================================
+   Responsive — original breakpoints preserved
+   ============================================================ */
+@media (min-width: 768px) and (max-width: 1024px) and (orientation: landscape) {
+  .page-map { padding: 20px 24px 40px; }
+  .floor-plan { padding: 20px; }
+  .fp-top { gap: 16px; }
+  .fp-room-big { width: 300px; min-width: 300px; font-size: 13px; }
+  .fp-room-salary { width: 180px; }
+  .desk { min-width: 64px; height: 52px; }
+  .fp-mgr-cell { min-width: 80px; }
+  .fp-desk-grid { gap: 8px; }
+  .map-person-info { padding: 8px 12px; }
+}
+@media (min-width: 768px) and (max-width: 1024px) and (orientation: portrait) {
+  .page-map { padding: 16px 20px 40px; }
+  .fp-top { flex-direction: column; gap: 12px; }
+  .fp-room-big, .fp-room-salary { width: 100%; min-width: auto; }
+  .desk { min-width: 60px; height: 50px; }
+  .map-header { flex-wrap: wrap; }
+  .map-person-info { width: 100%; margin-top: 8px; }
+}
+@media (max-width: 768px) {
+  .page-home { padding: 20px 16px; }
+  .home-header { margin-bottom: 32px; }
+  .home-content { max-width: 100%; }
+
+  /* Hide some pucks on mobile to keep things uncluttered */
+  .puck-a, .puck-c, .puck-e { display: none; }
+  .puck-b { width: 90px;  height: 90px;  top: 6%;  left: 4%;  }
+  .puck-d { width: 110px; height: 110px; bottom: 5%; right: 4%; }
+
+  .fp-top { flex-direction: column; gap: 12px; }
+  .fp-room-big, .fp-room-salary { width: 100%; min-width: auto; }
+  .fp-mgr-col { min-width: 64px; }
+  .desk {
+    min-width: 56px; height: 48px; padding: 2px;
+  }
+  .desk .seat-label { font-size: 10px; }
+  .desk .person-name-slot { font-size: 9px; }
+
+  .fp-mgr-cell { min-width: 70px; padding: 6px; }
+  .map-header { flex-wrap: wrap; gap: 10px; }
+  .map-person-info { width: 100%; margin-top: 8px; }
+  .floor-plan { padding: 12px; }
+}
+
+/* Focus-visible for any interactive element (a11y) */
+button:focus-visible, .icon-btn:focus-visible, .back-btn:focus-visible, .admin-close:focus-visible,
+.history-clear:focus-visible, .action-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--sh-sm), 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- 一级页面：搜索页 -->
+  <div class="page page-home" id="pageHome">
+    <!-- Decorative floating pucks (only on home, behind content) -->
+    <div class="puck puck-a float"></div>
+    <div class="puck puck-b float-soft"></div>
+    <div class="puck puck-d float-soft"></div>
+    <div class="puck puck-e float"></div>
+    <div class="home-header">
+      <span class="title-particle a" aria-hidden="true"></span>
+      <span class="title-particle b" aria-hidden="true"></span>
+      <span class="title-particle c" aria-hidden="true"></span>
+      <span class="title-particle d" aria-hidden="true"></span>
+      <span class="title-particle e" aria-hidden="true"></span>
+      <span class="title-particle f" aria-hidden="true"></span>
+      <h1 class="home-title">
+        <span class="search-action">
+          <span class="search-char">快</span><span class="search-char">速</span><span class="search-char">找</span><span class="search-char">到</span>
+        </span><span class="search-cursor" aria-hidden="true"></span><span class="accent">人力同事</span><br><span class="search-action search-action-delayed"><span class="search-char">的</span><span class="search-char">工</span><span class="search-char">位</span></span>
+      </h1>
+      <p class="home-subtitle">搜索姓名或拼音首字母，即可看到精确位置</p>
+    </div>
+
+    <div class="home-content">
+      <div class="home-search">
+        <div class="icon-well search-icon-well" aria-hidden="true">
+          <svg class="home-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+          </svg>
+        </div>
+        <input
+          type="text"
+          id="searchInput"
+          class="home-search-input"
+          placeholder="输入姓名搜索..."
+          inputmode="text"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="none"
+          spellcheck="false"
+        >
+        <button class="home-search-clear" id="searchClear" title="清空">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+        <div class="location-hint">
+          <span class="location-dot"></span>
+          <span>你所在位置</span>
+        </div>
+        <div class="search-suggestions" id="searchSuggestions"></div>
+      </div>
+
+      <div class="history-section">
+        <div class="history-header">
+          <span class="history-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            近期找人
+          </span>
+          <button class="history-clear" id="clearHistory">清空</button>
+        </div>
+        <div class="history-list" id="historyList">
+          <span class="history-empty">暂无搜索记录</span>
+        </div>
+      </div>
+
+      <button class="quick-enter-btn" id="quickEnterBtn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        查看完整座位图
+      </button>
+    </div>
+  </div>
+
+  <!-- 二级页面：座位图 -->
+  <div class="page page-map hidden" id="pageMap">
+    <div class="map-header">
+      <button class="back-btn" id="backBtn" title="返回">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+      <div class="map-title-area">
+        <div class="map-title">人力资源中心座位图</div>
+        <div class="map-subtitle" id="mapSubtitle">点击工位查看详情</div>
+      </div>
+      <div class="map-person-info" id="mapPersonInfo" style="display: none;">
+        <div class="avatar" id="mapAvatar"></div>
+        <div class="info">
+          <div class="name" id="mapName"></div>
+          <div class="dept" id="mapDept" style="font-size:12px; color:var(--fg-muted);"></div>
+          <div class="nav-text" id="mapNavText" style="display: none;"></div>
+        </div>
+        <div class="seat-badge" id="mapSeatBadge" style="display:none;"></div>
+      </div>
+      <button class="back-btn" id="adminBtn" title="管理" style="margin-left: auto; position: relative; left: 350px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+
+    <div class="floor-plan" id="floorPlan"></div>
+
+    <footer class="footer">
+      人力资源中心座位管理 · 数据存于浏览器本地
+    </footer>
+  </div>
+</div>
+
+<!-- 右键菜单 -->
+<ul class="context-menu" id="ctxMenu">
+  <li id="ctxEdit">编辑此人</li>
+  <li class="danger" id="ctxClear" style="display:none;">清空此座位</li>
+</ul>
+
+<!-- 管理弹窗 -->
+<div class="overlay" id="overlay">
+  <div class="admin-panel">
+    <div class="admin-header">
+      <h2 id="adminTitle">管理员工</h2>
+      <button class="admin-close" id="adminClose">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="admin-body">
+      <div class="admin-toolbar">
+        <button class="primary" id="btnAdd">+ 新增</button>
+        <button id="btnImport">📥 导入</button>
+        <button id="btnExport">📤 导出</button>
+        <input type="file" id="importFile" accept=".csv,.txt" style="display:none;">
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>姓名</th><th>部门</th><th>岗位</th><th>座位</th><th>操作</th></tr></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 表单弹窗 -->
+<div class="overlay" id="formOverlay">
+  <div class="admin-panel" style="max-width:480px;">
+    <div class="admin-header">
+      <h2 id="formTitle">新增员工</h2>
+      <button class="admin-close" id="formClose">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="admin-body">
+      <div class="form-row">
+        <label>姓名 *</label>
+        <input id="fName" maxlength="20" placeholder="1-20字">
+        <div class="form-error" id="eName"></div>
+      </div>
+      <div class="form-row">
+        <label>部门 *</label>
+        <input id="fDept" maxlength="30" placeholder="请输入部门（与导入数据一致）">
+        <div class="form-error" id="eDept"></div>
+      </div>
+      <div class="form-row">
+        <label>岗位</label>
+        <input id="fPosition" maxlength="30" placeholder="请输入岗位">
+      </div>
+      <div class="form-row">
+        <label>座位号 *</label>
+        <select id="fSeat"><option value="">请选择</option></select>
+        <div class="form-error" id="eSeat"></div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
+        <button style="padding:12px 20px;border-radius:8px;border:1px solid var(--border);background:var(--surface);cursor:pointer;font-family:inherit;font-size:14px;font-weight:500;" id="formCancel">取消</button>
+        <button style="padding:12px 20px;border-radius:8px;border:none;background:var(--accent);color:white;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;" id="formSave">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========== 数据 ==========
+let ALL_SEATS = ['A1','A2','M4','M1','M2','M3'];
+for (let i = 1; i <= 48; i++) ALL_SEATS.push('B' + i);
+const REMOVED_SEATS = new Set(['B1','B5','B9','B13','B17','B21']);
+ALL_SEATS = ALL_SEATS.filter(s => !REMOVED_SEATS.has(s));
+
+const DISPLAY_LABEL = generateDisplayLabel();
+function generateDisplayLabel() {
+  const label = {};
+  ['A1', 'A2', 'M4', 'M1', 'M2', 'M3'].forEach(s => label[s] = s);
+  // B序列从B2到B43（跳过B1）
+  for (let i = 2; i <= 43; i++) {
+    label['B' + i] = 'B' + i;
+  }
+  return label;
+}
+
+function seatLabel(s) { return DISPLAY_LABEL[s] || s; }
+function dataSeatFromLabel(label) {
+  for (const [ds, dl] of Object.entries(DISPLAY_LABEL)) {
+    if (dl === label) return ds;
+  }
+  return label;
+}
+function getAllValidSeats() { return ALL_SEATS.slice(); }
+
+const PALETTE = [
+  '#10b981','#06b6d4','#14b8a6','#0d9488','#84cc16','#eab308','#f97316','#ef4444',
+  '#dc2626','#ec4899','#db2777','#9333ea','#7c3aed','#6366f1','#4f46e5','#2563eb',
+  '#0284c7','#0891b2','#0e7490','#0f766e','#059669','#16a34a','#65a30d','#ca8a04',
+  '#be185d','#db2777','#7c2d12','#52525b','#1e40af','#15803d','#a16207','#dc2626'
+];
+
+function defaultData() {
+  // Seed: only fills seats with placeholder names. Departments are intentionally
+  // left blank so the user must import their real data to populate the dept field
+  // (i.e. "导入部门数据为准").
+  const data = [
+    { id:1,  name:'薪酬-甲', dept:'', seat:'A1', position:'', color:'#0ea5e9' },
+    { id:2,  name:'薪酬-乙', dept:'', seat:'A2', position:'', color:'#3b82f6' },
+    { id:3,  name:'薪酬-丙', dept:'', seat:'M4', position:'', color:'#f59e0b' },
+    { id:4,  name:'经理-甲', dept:'', seat:'M1', position:'', color:'#8b5cf6' },
+    { id:5,  name:'经理-乙', dept:'', seat:'M2', position:'', color:'#a855f7' },
+    { id:6,  name:'经理-丙', dept:'', seat:'M3', position:'', color:'#d946ef' }
+  ];
+  for (let i = 0; i < 48; i++) {
+    const seat = 'B' + (i + 1);
+    if (REMOVED_SEATS.has(seat)) continue;
+    data.push({
+      id: 7 + i,
+      name: '员工-' + (i + 1),
+      dept: '',
+      seat: seat,
+      position: '',
+      color: PALETTE[i % PALETTE.length]
+    });
+  }
+  return data;
+}
+
+const CURRENT_VERSION = 'v4-position';
+function loadPeople() {
+  try {
+    if (localStorage.getItem('dataVersion') !== CURRENT_VERSION) {
+      localStorage.removeItem('finder.people');
+      localStorage.setItem('dataVersion', CURRENT_VERSION);
+    }
+    const raw = localStorage.getItem('finder.people');
+    if (raw) {
+      try {
+        let data = JSON.parse(raw);
+        data = data.filter(p => !REMOVED_SEATS.has(p.seat));
+        return data;
+      } catch(e) {}
+    }
+  } catch(e) {}
+  return defaultData();
+}
+function savePeople() {
+  try {
+    localStorage.setItem('finder.people', JSON.stringify(PEOPLE));
+  } catch(e) {
+    if (e.name === 'QuotaExceededError') {
+      console.error('存储空间不足，请导出数据后清理');
+    } else {
+      console.error('保存失败:', e);
+    }
+  }
+}
+
+let PEOPLE = loadPeople();
+let nextId = PEOPLE.reduce((m, p) => Math.max(m, p.id), 0) + 1;
+let seatIndex = new Map();
+function rebuildSeatIndex() {
+  seatIndex = new Map(PEOPLE.map(p => [p.seat, p]));
+}
+rebuildSeatIndex();
+function personBySeat(seat) { return seatIndex.get(seat) || null; }
+
+// 历史记录
+const MAX_HISTORY = 10;
+function loadHistory() {
+  try {
+    return JSON.parse(localStorage.getItem('finder.history') || '[]');
+  } catch(e) { return []; }
+}
+function saveHistory(history) {
+  try {
+    localStorage.setItem('finder.history', JSON.stringify(history));
+  } catch(e) {
+    console.error('保存历史记录失败:', e);
+  }
+}
+let searchHistory = loadHistory();
+
+function addToHistory(person) {
+  searchHistory = searchHistory.filter(p => p.id !== person.id);
+  searchHistory.unshift({ id: person.id, name: person.name });
+  if (searchHistory.length > MAX_HISTORY) searchHistory = searchHistory.slice(0, MAX_HISTORY);
+  saveHistory(searchHistory);
+  renderHistory();
+}
+
+function removeFromHistory(id) {
+  searchHistory = searchHistory.filter(p => p.id !== id);
+  saveHistory(searchHistory);
+  renderHistory();
+}
+
+function clearAllHistory() {
+  searchHistory = [];
+  saveHistory(searchHistory);
+  renderHistory();
+}
+
+// ========== 页面切换 ==========
+const pageHome = document.getElementById('pageHome');
+const pageMap = document.getElementById('pageMap');
+
+let currentPerson = null;
+
+function goToMap(person = null) {
+  currentPerson = person;
+
+  pageHome.classList.add('hidden');
+  pageMap.classList.add('center');
+
+  pageMap.classList.remove('hidden');
+  pageMap.classList.remove('center');
+
+  if (person) {
+    addToHistory(person);
+    showPersonInfo(person);
+  } else {
+    hidePersonInfo();
+  }
+
+  renderFloorPlan(person ? person.seat : null);
+  document.getElementById('searchInput').value = '';
+  hideSuggestions();
+}
+
+function goToHome() {
+  pageMap.classList.add('hidden');
+  pageHome.classList.add('center');
+
+  pageHome.classList.remove('hidden');
+  pageHome.classList.remove('center');
+
+  currentPerson = null;
+  document.getElementById('searchInput').focus();
+}
+
+document.getElementById('backBtn').addEventListener('click', goToHome);
+document.getElementById('quickEnterBtn').addEventListener('click', () => goToMap(null));
+
+// ========== 搜索建议 ==========
+const searchInput = document.getElementById('searchInput');
+const searchClear = document.getElementById('searchClear');
+const searchSuggestions = document.getElementById('searchSuggestions');
+
+const PY_MAP = {
+  '张':'z','赵':'z','郑':'z','周':'z','朱':'z','钟':'z','邹':'z','曾':'z','章':'z','祝':'z',
+  '王':'w','吴':'w','魏':'w','温':'w','汪':'w','文':'w','翁':'w','韦':'w','巫':'w',
+  '李':'l','刘':'l','林':'l','梁':'l','罗':'l','雷':'l','龙':'l','吕':'l','卢':'l','蓝':'l','陆':'l','柳':'l','廉':'l',
+  '陈':'c','曹':'c','程':'c','崔':'c','蔡':'c','常':'c','成':'c','楚':'c','储':'c',
+  '杨':'y','叶':'y','姚':'y','袁':'y','易':'y','于':'y','余':'y','颜':'y','严':'y','俞':'y','岳':'y','尤':'y','喻':'y',
+  '黄':'h','何':'h','韩':'h','胡':'h','侯':'h','贺':'h','洪':'h','霍':'h','郝':'h','华':'h','花':'h',
+  '孙':'s','宋':'s','沈':'s','苏':'s','石':'s','施':'s','邵':'s','单':'s','史':'s','盛':'s','时':'s','沙':'s',
+  '徐':'x','许':'x','谢':'x','肖':'x','熊':'x','夏':'x','邢':'x','辛':'x','向':'x','项':'x','习':'x',
+  '马':'m','毛':'m','孟':'m','苗':'m','穆':'m','莫':'m','梅':'m','牟':'m','闵':'m','缪':'m',
+  '高':'g','郭':'g','顾':'g','葛':'g','龚':'g','古':'g','管':'g','桂':'g','谷':'g',
+  '田':'t','唐':'t','陶':'t','童':'t','谭':'t','汤':'t','滕':'t','邰':'t','铁':'t',
+  '杜':'d','邓':'d','丁':'d','董':'d','段':'d','戴':'d','窦':'d','刁':'d','狄':'d','邸':'d',
+  '钱':'q','秦':'q','邱':'q','齐':'q','乔':'q','曲':'q','强':'q','戚':'q',
+  '蒋':'j','金':'j','姜':'j','江':'j','焦':'j','景':'j','吉':'j','贾':'j','晋':'j','季':'j','纪':'j','姬':'j','简':'j',
+  '方':'f','冯':'f','傅':'f','费':'f','范':'f','房':'f','樊':'f','符':'f','凤':'f',
+  '彭':'p','潘':'p','庞':'p','裴':'p','皮':'p','蒲':'p','鹏':'p','平':'p',
+  '静':'j','洁':'j','佳':'j','嘉':'j','建':'j','健':'j','杰':'j','军':'j','俊':'j','君':'j','均':'j','菊':'j','锦':'j','瑾':'j',
+  '伟':'w','文':'w','武':'w','旺':'w','威':'w','炜':'w','雯':'w',
+  '芳':'f','芬':'f','凤':'f','飞':'f','菲':'f','斐':'f','峰':'f','凡':'f','帆':'f','福':'f','富':'f',
+  '娜':'n','宁':'n','牛':'n','倪':'n','聂':'n','能':'n','南':'n','男':'n',
+  '磊':'l','亮':'l','立':'l','凌':'l','莲':'l','岚':'l','朗':'l','乐':'l','黎':'l','礼':'l','理':'l','力':'l',
+  '婷':'t','涛':'t','天':'t','甜':'t','桐':'t','彤':'t','童':'t',
+  '强':'q','青':'q','秋':'q','琴':'q','勤':'q','倩':'q','清':'q','晴':'q','庆':'q','巧':'q',
+  '晨':'c','诚':'c','成':'c','承':'c','超':'c','潮':'c','策':'c','川':'c','春':'c','翠':'c',
+  '琳':'l','霖':'l','临':'l','灵':'l','玲':'l','林':'l','兰':'l','澜':'l','龙':'l','璐':'l',
+  '雪':'x','萱':'x','湘':'x','香':'x','想':'x','祥':'x','雄':'x',
+  '阳':'y','洋':'y','扬':'y','仰':'y','燕':'y','雁':'y','艳':'y','言':'y','炎':'y','彦':'y','研':'y','妍':'y','雅':'y','仪':'y',
+  '波':'b','博':'b','柏':'b','宝':'b','包':'b','北':'b','贝':'b','标':'b','斌':'b','冰':'b',
+  '辉':'h','慧':'h','汇':'h','卉':'h','浩':'h','晗':'h','玥':'y','蕾':'l','豪':'h','海':'h','红':'h','洪':'h',
+  '敏':'m','明':'m','梦':'m','萌':'m','墨':'m','沫':'m','陌':'m',
+  '苏':'s','素':'s','爽':'s','硕':'s','思':'s','斯':'s','司':'s','松':'s',
+  '珊':'s','晟':'s','升':'s','盛':'s',
+  '媚':'m','颖':'y','甘':'g','泉':'q','展':'z','靳':'j','亚':'y','新':'x','邝':'k',
+  '永':'y','烽':'f','茵':'y','秀':'x','丽':'l','玉':'y','欣':'x','裕':'y','媛':'y',
+  '党':'d','家':'j','付':'f','和':'h','继':'j','萍':'p','晓':'x','芯':'x',
+  '任':'r','圆':'y','勇':'y','伍':'w','换':'h','少':'s','群':'q','莹':'y',
+  '桃':'t','志':'z','锋':'f','詹':'z','诗':'s','钊':'z',
+  '宇':'y','安':'a','然':'r','之':'z','若':'r','希':'x','云':'y','月':'y',
+  '萌':'m','露':'l','溪':'x','瑞':'r','瑞':'r','辰':'c','熙':'x','璇':'x',
+  '悦':'y','宁':'n','帆':'f','睿':'r','维':'w','宏':'h','政':'z','鹏':'p'
+};
+
+function getPinyinInitials(name) {
+  let r = '';
+  for (const ch of name) r += PY_MAP[ch] || ch.toLowerCase();
+  return r;
+}
+
+function searchPeople(query) {
+  if (!query || !query.trim()) return [];
+  const q = query.trim().toLowerCase();
+  return PEOPLE.filter(p =>
+    p.name.toLowerCase().includes(q) ||
+    getPinyinInitials(p.name).includes(q) ||
+    p.seat.toLowerCase().includes(q)
+  ).slice(0, 8);
+}
+
+function renderSuggestions(results) {
+  if (results.length === 0) {
+    searchSuggestions.innerHTML = '<div class="search-no-result">未找到匹配结果</div>';
+    searchSuggestions.classList.add('show');
+    return;
+  }
+
+  searchSuggestions.innerHTML = results.map(p => `
+    <div class="search-suggestion-item" data-id="${p.id}">
+      <div class="avatar">${p.name[0]}</div>
+      <div class="info">
+        <div class="name">${escapeHTML(p.name)}</div>
+        <div class="dept">${escapeHTML(p.dept)}</div>
+        <div class="dept">${escapeHTML(p.position || '')}</div>
+      </div>
+    </div>
+  `).join('');
+  searchSuggestions.classList.add('show');
+}
+
+function hideSuggestions() {
+  searchSuggestions.classList.remove('show');
+}
+
+let searchTimer = null;
+function handleSearchInput() {
+  const v = searchInput.value.trim();
+  searchClear.classList.toggle('show', v.length > 0);
+
+  if (v.length > 0) {
+    const results = searchPeople(v);
+    renderSuggestions(results);
+  } else {
+    hideSuggestions();
+  }
+}
+
+searchInput.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(handleSearchInput, 150);
+});
+
+// iOS PWA workaround: standalone 模式下首次点击 <input> 不会弹出键盘。
+// 用 pointerdown 主动 focus,绕过这个已知 bug。
+['pointerdown', 'touchstart'].forEach(evt => {
+  searchInput.addEventListener(evt, () => {
+    if (document.activeElement !== searchInput) {
+      // 延一帧,避免某些 iOS 版本吞掉紧随其后的 focus
+      setTimeout(() => searchInput.focus(), 0);
+    }
+  }, { passive: true });
+});
+
+searchInput.addEventListener('blur', () => {
+  setTimeout(hideSuggestions, 200);
+});
+
+searchInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const results = searchPeople(searchInput.value);
+    if (results.length === 1) {
+      goToMap(results[0]);
+    } else if (results.length > 1) {
+      searchInput.blur();
+    }
+  }
+});
+
+searchSuggestions.addEventListener('click', (e) => {
+  const item = e.target.closest('.search-suggestion-item');
+  if (item) {
+    const id = parseInt(item.dataset.id);
+    const person = PEOPLE.find(p => p.id === id);
+    if (person) {
+      goToMap(person);
+    }
+  }
+});
+
+searchClear.addEventListener('click', () => {
+  searchInput.value = '';
+  searchClear.classList.remove('show');
+  hideSuggestions();
+  searchInput.focus();
+});
+
+// ========== 历史记录 ==========
+function renderHistory() {
+  const list = document.getElementById('historyList');
+  if (searchHistory.length === 0) {
+    list.innerHTML = '<span class="history-empty">暂无搜索记录</span>';
+    return;
+  }
+
+  list.innerHTML = searchHistory.map(p => `
+    <div class="history-item" data-id="${p.id}">
+      <span class="avatar-mini">${p.name[0]}</span>
+      <span>${escapeHTML(p.name)}</span>
+      <span class="remove-btn" data-remove="${p.id}">×</span>
+    </div>
+  `).join('');
+}
+
+document.getElementById('historyList').addEventListener('click', (e) => {
+  const removeBtn = e.target.closest('[data-remove]');
+  if (removeBtn) {
+    e.stopPropagation();
+    const id = parseInt(removeBtn.dataset.remove);
+    removeFromHistory(id);
+    return;
+  }
+
+  const item = e.target.closest('.history-item');
+  if (item) {
+    const id = parseInt(item.dataset.id);
+    const person = PEOPLE.find(p => p.id === id);
+    if (person) {
+      goToMap(person);
+    }
+  }
+});
+
+document.getElementById('clearHistory').addEventListener('click', clearAllHistory);
+
+// ========== 座位图渲染 ==========
+
+function navigationText(p) {
+  const s = p.seat;
+  if (s === 'M4') return '进门直走到底右转，薪酬组小房间';
+  if (s.startsWith('A')) return '进门直走到底右转，薪酬组小房间';
+  if (s.startsWith('M')) return '进门沿左侧墙走，经理开放座';
+  const num = parseInt(s.slice(1));
+  const row = Math.ceil(num / 4);
+  return '进门直走，第' + row + '排工位区（靠右）';
+}
+
+function showPersonInfo(p) {
+  const info = document.getElementById('mapPersonInfo');
+  document.getElementById('mapAvatar').style.background = '';
+  document.getElementById('mapAvatar').textContent = p.name[0];
+  document.getElementById('mapName').textContent = p.name + ' · ' + (p.position || p.dept);
+  document.getElementById('mapDept').textContent = p.position ? p.dept : '';
+  document.getElementById('mapNavText').textContent = '→ ' + navigationText(p);
+  document.getElementById('mapSubtitle').textContent = '';
+  info.style.display = 'flex';
+}
+
+function hidePersonInfo() {
+  document.getElementById('mapPersonInfo').style.display = 'none';
+  document.getElementById('mapSubtitle').textContent = '点击工位查看详情';
+}
+
+function escapeHTML(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function renderDesk(seat, person, isSelected, isMatched, isDimmed) {
+  const cls = ['desk'];
+  if (person) cls.push('occ');
+  if (isSelected) cls.push('selected');
+  if (isMatched) cls.push('matched');
+  if (isDimmed) cls.push('dimmed');
+  const personHTML = person
+    ? `<span class="person-name-slot">${escapeHTML(person.name)}</span>`
+    : '<span class="empty-hint"></span>';
+  return `<div class="${cls.join(' ')}" data-seat="${seat}">${personHTML}</div>`;
+}
+
+function renderMgrCell(seat, person, isSelected, isMatched, isDimmed, gridRow) {
+  const cls = ['fp-mgr-cell'];
+  if (person) cls.push('occ');
+  if (isSelected) cls.push('selected');
+  if (isMatched) cls.push('matched');
+  if (isDimmed) cls.push('dimmed');
+  const personHTML = person
+    ? `<span class="mgr-name-slot">${escapeHTML(person.name)}</span>`
+    : '<span class="empty-hint"></span>';
+  return `<div class="${cls.join(' ')}" data-seat="${seat}" style="grid-row:${gridRow}">${personHTML}</div>`;
+}
+
+function drawPathTo(targetSeat, retry = 0) {
+  const svg = document.getElementById('fpPathSvg');
+  const fp  = document.getElementById('floorPlan');
+  if (!svg || !fp) return;
+
+  // Safari 上 SVG 刚插入 layout 不稳, 主动 retry 拿稳 bbox.
+  const svgRect = svg.getBoundingClientRect();
+  if ((svgRect.width === 0 || svgRect.height === 0) && retry < 4) {
+    setTimeout(() => drawPathTo(targetSeat, retry + 1), 80);
+    return;
+  }
+
+  // === 短路 1: 员工-40 = 你所在位置自身,不画路径 ===
+  if (targetSeat === 'B40') {
+    svg.innerHTML = '';
+    return;
+  }
+
+  const startEl = document.querySelector('.you-here-marker');
+  const endEl = document.querySelector(`[data-seat="${targetSeat}"]`);
+  if (!startEl || !endEl) { svg.innerHTML = ''; return; }
+
+  const sRect = startEl.getBoundingClientRect();
+  const eRect = endEl.getBoundingClientRect();
+  const sCx = sRect.left + sRect.width / 2;
+  const sCy = sRect.top  + sRect.height / 2;
+  const eCx = eRect.left + eRect.width  / 2;
+  const eCy = eRect.top  + eRect.height / 2;
+
+  // === 短路 2: 目标离你-here 红点 < 50px → 也是 "自己" ===
+  const distSelf = Math.hypot(eCx - sCx, eCy - sCy);
+  if (distSelf < 50) {
+    svg.innerHTML = '';
+    return;
+  }
+
+  // 起点: 从红点偏出, B37/B38/B39 用 3px, 其余用 14px
+  const startPad = (targetSeat === 'B37' || targetSeat === 'B38' || targetSeat === 'B39') ? 3 : 14;
+  const startCx = sCx + (eCx >= sCx ? startPad : -startPad);
+
+  // 决定走法
+  const seatNum = parseInt(targetSeat.slice(1), 10);
+  const isBDesk = targetSeat.startsWith('B') && seatNum >= 1 && seatNum <= 48;
+  const rowNum  = isBDesk ? Math.ceil(seatNum / 4) : 0;
+  const isLastInRow = isBDesk && (seatNum % 4 === 0);
+  const isOddRow    = isBDesk && !isLastInRow && (rowNum % 2 === 1);
+  const isEvenRow   = isBDesk && !isLastInRow && (rowNum % 2 === 0);
+  const isMirrorMgr = (targetSeat === 'M1' || targetSeat === 'M2' || targetSeat === 'M3');
+
+  let pathPts;
+
+  // 走法 1 — 右侧走法（odd row 前 3 位）
+  if (isOddRow) {
+    pathPts = [
+      { x: startCx,         y: sCy },
+      { x: eRect.right + 6, y: sCy },
+      { x: eRect.right + 6, y: eCy },
+      { x: eRect.right - 2, y: eCy }
+    ];
+  }
+  // 走法 2 — 镜像走法（even row 前 3 位 + M1/M2/M3）
+  else if (isEvenRow || isMirrorMgr) {
+    pathPts = [
+      { x: startCx,         y: sCy },
+      { x: eRect.left - 10, y: sCy },
+      { x: eRect.left - 10, y: eCy },
+      { x: eRect.left + 2,  y: eCy }
+    ];
+  }
+  // 走法 3 — L 形 fallback（每 row 第 4 位 + A1/A2/M4）
+  else {
+    const borderGap = 2;
+    const goingUp = sCy > eCy;
+    const endCy = goingUp ? (eRect.bottom + borderGap) : (eRect.top - borderGap);
+    pathPts = [
+      { x: startCx, y: sCy },
+      { x: eCx,     y: sCy },
+      { x: eCx,     y: endCy }
+    ];
+  }
+
+  // === 屏幕坐标 → floor-plan layout 坐标系 (手算逆变换, 绕开 SVG CTM) ===
+  // floor-plan CSS: transform: rotate(90deg) translateX(-240px); transform-origin: center
+  // 已正确推导的逆变换:
+  //   lx = sy_screen - fpRect.top
+  //   ly = fpRect.left  + fpRect.width - sx_screen
+  // 其中 fpRect.width = visual width post-rotate = floor-plan pre-rotate offsetHeight
+  const fpRect = fp.getBoundingClientRect();
+  function screenToFloorLocal(sx, sy) {
+    return {
+      x: sy - fpRect.top,
+      y: fpRect.left + fpRect.width - sx
+    };
+  }
+  const localPts = pathPts.map(pt => screenToFloorLocal(pt.x, pt.y));
+
+  // === 渲染 SVG path: viewBox 用 pre-rotate 尺寸 (offsetWidth × offsetHeight) ===
+  // SVG 渲染 user-coord = floor-plan element-local coord (rotate 由 floor-plan 的 transform 自然带过来).
+  svg.setAttribute('viewBox', `0 0 ${fp.offsetWidth} ${fp.offsetHeight}`);
+  svg.setAttribute('preserveAspectRatio', 'none');
+  const fmt = (n) => n.toFixed(1);
+  const d = localPts
+    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${fmt(p.x)} ${fmt(p.y)}`)
+    .join(' ');
+
+  svg.innerHTML = `
+    <path class="fp-path-dashed" d="${d}" />
+    <path class="fp-path-pulse"  d="${d}" />
+  `;
+  console.log('[drawPathTo] drew path d=', d, 'svg.viewBox=', svg.getAttribute('viewBox'));
+
+  // === Progressive path-draw animation ===
+  // 把 stroke-dasharray 设成总路径长度（一整段实线），dashoffset 同长（整段藏在画面外），
+  // 再 transition dashoffset → 0，实现"从起点画到终点"的渐进效果。
+  // 动画结束后还原 dashed 虚线样式 + 让 pulse 流光继续跑。
+  const ANIM_MS = 850;
+  const drawPaths = svg.querySelectorAll('path');
+  const drawLengths = Array.from(drawPaths).map(p => p.getTotalLength());
+
+  drawPaths.forEach((p, i) => {
+    // 先记下原虚线样式，动画结束后还原
+    p.dataset.origDasharray = p.getAttribute('stroke-dasharray') || '8 6';
+    // 临时把 dasharray 设成总长度（一整段实线），offset 同长（整段藏在画面外）
+    p.style.strokeDasharray = String(drawLengths[i]);
+    p.style.strokeDashoffset = String(drawLengths[i]);
+    // 先暂停 pulse 的流光动画，避免和 transition 打架
+    if (p.classList.contains('fp-path-pulse')) {
+      p.style.animation = 'none';
+    }
+  });
+
+  // 两帧 rAF 确保上面的初始状态提交了再开 transition
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      drawPaths.forEach(p => {
+        p.style.transition = `stroke-dashoffset ${ANIM_MS}ms ease-out`;
+        p.style.strokeDashoffset = '0';
+      });
+    });
+  });
+
+  // 动画结束后还原虚线 + pulse 流光
+  setTimeout(() => {
+    drawPaths.forEach(p => {
+      p.style.strokeDasharray = p.dataset.origDasharray;
+      p.style.transition = '';
+      if (p.classList.contains('fp-path-pulse')) {
+        p.style.animation = '';  // 恢复 CSS 里定义的 pathFlow 动画
+      }
+    });
+  }, ANIM_MS + 50);
+}
+
+function renderFloorPlan(highlightSeat) {
+  const matchedSeats = highlightSeat ? new Set([highlightSeat]) : new Set();
+  const isHighlight = !!highlightSeat;
+
+  const d = (seat) => {
+    const p = personBySeat(seat);
+    const selected = currentPerson && currentPerson.seat === seat;
+    const matched = matchedSeats.has(seat);
+    const dimmed = isHighlight && !matched;
+    return renderDesk(seat, p, selected, matched, dimmed);
+  };
+
+  const md = (seat, gridRow) => {
+    const p = personBySeat(seat);
+    const selected = currentPerson && currentPerson.seat === seat;
+    const matched = matchedSeats.has(seat);
+    const dimmed = isHighlight && !matched;
+    return renderMgrCell(seat, p, selected, matched, dimmed, gridRow);
+  };
+
+  const ds = (seat) => {
+    if (REMOVED_SEATS.has(seat)) return '<span class="desk" style="visibility:hidden;pointer-events:none;"></span>';
+    return d(seat);
+  };
+
+  const html = `
+    <div class="fp-top">
+      <div class="fp-room-lg fp-room-big" style="width: 340px; display: flex; align-items: center; justify-content: center;">
+        <span style="writing-mode: vertical-rl; text-orientation: upright; font-weight: 700; color: var(--fg-muted); letter-spacing: 4px; display: inline-block; transform: rotate(-90deg) translateY(10px); transform-origin: center;">人力总监办公室</span>
+      </div>
+      <div class="fp-room-salary">
+        <span class="fp-room-salary-label" style="font-weight: 700; color: var(--fg-muted); letter-spacing: 4px; display: inline-block; text-align: left; left: 50%; top: 50%; transform: rotate(-90deg) translate(50%, 190%); transform-origin: center; padding-top: 8px; padding-bottom: 4px;">薪酬组</span>
+        ${d('A1')}${d('A2')}${d('M4')}
+      </div>
+    </div>
+    <div class="fp-main">
+      ${md('M1', '1/3')}
+      ${md('M2', '3/5')}
+      ${md('M3', '5/7')}
+      <div class="fp-double-lines" style="grid-column:1/-1;grid-row:7/9;position:relative;pointer-events:none;z-index:1;">
+        <div class="corridor-channel">
+          <span class="corridor-label" style="writing-mode: vertical-rl; text-orientation: upright; font-weight: 700; color: var(--fg-muted); letter-spacing: 4px; display: inline-block; transform: rotate(270deg); transform-origin: center;">电梯口</span>
+          <div class="corridor-arrows-wrap" style="transform: translate(0px, -10px);">
+            <div class="corridor-arrows">
+              <span class="elevator-arrow">◀</span><span class="elevator-arrow">◀</span><span class="elevator-arrow">◀</span><span class="elevator-arrow">◀</span><span class="elevator-arrow">◀</span>
+            </div>
+            <div class="corridor-arrows">
+              <span class="elevator-arrow">◀</span><span class="elevator-arrow">◀</span><span class="elevator-arrow">◀</span><span class="elevator-arrow">◀</span><span class="elevator-arrow">◀</span>
+            </div>
+            <div class="corridor-arrows">
+              <span class="elevator-arrow">◀</span><span class="elevator-arrow">◀</span><span class="elevator-arrow">◀</span><span class="elevator-arrow">◀</span><span class="elevator-arrow">◀</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="fp-desk-grid">
+        <div class="fp-desk-row">${ds('B1')}${d('B2')}${d('B3')}${d('B4')}</div>
+        <div class="fp-desk-row" style="margin-bottom: 20px;">${ds('B5')}${d('B6')}${d('B7')}${d('B8')}</div>
+        <div class="fp-desk-row">${ds('B9')}${d('B10')}${d('B11')}${d('B12')}</div>
+        <div class="fp-desk-row" style="margin-bottom: 20px;">${ds('B13')}${d('B14')}${d('B15')}${d('B16')}</div>
+        <div class="fp-desk-row">${ds('B17')}${d('B18')}${d('B19')}${d('B20')}</div>
+        <div class="fp-desk-row" style="margin-bottom: 20px;">${ds('B21')}${d('B22')}${d('B23')}${d('B24')}</div>
+        <div class="fp-desk-row">${d('B25')}${d('B26')}${d('B27')}${d('B28')}</div>
+        <div class="fp-desk-row" style="margin-bottom: 20px;">${d('B29')}${d('B30')}${d('B31')}${d('B32')}</div>
+        <div class="fp-desk-row">${d('B33')}${d('B34')}${d('B35')}${d('B36')}</div>
+        <div class="fp-desk-row" style="margin-bottom: 20px;">
+          ${d('B37')}${d('B38')}${d('B39')}${d('B40')}
+          <span class="you-here-marker" title="你在这里"></span>
+        </div>
+        <div class="fp-desk-row">${d('B41')}${d('B42')}${d('B43')}${d('B44')}</div>
+        <div class="fp-desk-row">${d('B45')}${d('B46')}${d('B47')}${d('B48')}</div>
+      </div>
+    </div>
+    <div class="fp-entrance">
+      <div class="fp-entrance-icon"></div>
+      <span class="fp-entrance-text">入口</span>
+    </div>
+    <svg id="fpPathSvg" class="fp-path-svg"></svg>
+  `;
+  document.getElementById('floorPlan').innerHTML = html;
+  // 等一帧再画 SVG 路径: SVG 刚插入 DOM 还没 layout,
+  // 此时 svg.getScreenCTM() 会返回 null 或错的 transform,
+  // 导致 path 落到错位置. requestAnimationFrame 确保 layout 完成.
+  requestAnimationFrame(() => drawPathTo(highlightSeat));
+}
+
+// 座位点击
+let ctxSeat = null;
+
+document.getElementById('floorPlan').addEventListener('click', e => {
+  const desk = e.target.closest('.desk');
+  if (desk) {
+    const seat = desk.dataset.seat;
+    const p = personBySeat(seat);
+    if (p) {
+      currentPerson = p;
+      showPersonInfo(p);
+      addToHistory(p);
+      renderFloorPlan(p.seat);
+    }
+    return;
+  }
+
+  const mgr = e.target.closest('.fp-mgr-cell');
+  if (mgr) {
+    const seat = mgr.dataset.seat;
+    const p = personBySeat(seat);
+    if (p) {
+      currentPerson = p;
+      showPersonInfo(p);
+      addToHistory(p);
+      renderFloorPlan(p.seat);
+    }
+    return;
+  }
+
+  // 点击空白地时，取消选中，全选所有座位
+  currentPerson = null;
+  hidePersonInfo();
+  renderFloorPlan(null);
+});
+
+document.getElementById('floorPlan').addEventListener('contextmenu', e => {
+  const desk = e.target.closest('.desk');
+  if (desk) {
+    e.preventDefault();
+    ctxSeat = desk.dataset.seat;
+    const p = personBySeat(ctxSeat);
+    updateContextMenu(p);
+    showContextMenu(e.clientX, e.clientY);
+    return;
+  }
+  const mgr = e.target.closest('.fp-mgr-cell');
+  if (mgr) {
+    e.preventDefault();
+    ctxSeat = mgr.dataset.seat;
+    const p = personBySeat(ctxSeat);
+    updateContextMenu(p);
+    showContextMenu(e.clientX, e.clientY);
+  }
+});
+
+// Pad 触屏长按编辑（与右键功能一致）
+{
+  let longPressTimer = null;
+  let longPressTarget = null;
+
+  const floorPlan = document.getElementById('floorPlan');
+
+  floorPlan.addEventListener('touchstart', e => {
+    const desk = e.target.closest('.desk');
+    const mgr = e.target.closest('.fp-mgr-cell');
+    if (desk || mgr) {
+      longPressTarget = desk || mgr;
+      longPressTimer = setTimeout(() => {
+        ctxSeat = longPressTarget.dataset.seat;
+        const p = personBySeat(ctxSeat);
+        updateContextMenu(p);
+        const touch = e.touches[0] || e.changedTouches[0];
+        showContextMenu(touch.clientX, touch.clientY);
+        longPressTimer = null;
+        longPressTarget = null;
+      }, 600);
+    }
+  }, { passive: false });
+
+  floorPlan.addEventListener('touchmove', () => {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; longPressTarget = null; }
+  });
+
+  floorPlan.addEventListener('touchend', () => {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; longPressTarget = null; }
+  });
+
+  floorPlan.addEventListener('touchcancel', () => {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; longPressTarget = null; }
+  });
+}
+
+function updateContextMenu(person) {
+  const editItem = document.getElementById('ctxEdit');
+  const clearItem = document.getElementById('ctxClear');
+  if (person) {
+    editItem.textContent = '编辑此人';
+    clearItem.style.display = '';
+  } else {
+    editItem.textContent = '添加到此座位';
+    clearItem.style.display = 'none';
+  }
+}
+
+function showContextMenu(x, y) {
+  const menu = document.getElementById('ctxMenu');
+  menu.style.left = Math.min(x, window.innerWidth - 150) + 'px';
+  menu.style.top = Math.min(y, window.innerHeight - 80) + 'px';
+  menu.classList.add('show');
+}
+
+document.addEventListener('click', () => {
+  document.getElementById('ctxMenu').classList.remove('show');
+});
+
+document.getElementById('ctxEdit').addEventListener('click', () => {
+  const p = personBySeat(ctxSeat);
+  if (p) {
+    openForm(p.id);
+  } else {
+    openForm(null, ctxSeat);
+  }
+});
+
+document.getElementById('ctxClear').addEventListener('click', () => {
+  const p = personBySeat(ctxSeat);
+  if (p && confirm('确定清空 ' + p.name + ' 的座位吗？')) {
+    PEOPLE = PEOPLE.filter(x => x.id !== p.id);
+    rebuildSeatIndex();
+    savePeople();
+    if (currentPerson && currentPerson.id === p.id) {
+      currentPerson = null;
+      hidePersonInfo();
+    }
+    renderFloorPlan(currentPerson ? currentPerson.seat : null);
+    renderTable();
+  }
+});
+
+// ========== 管理面板 ==========
+document.getElementById('adminBtn').addEventListener('click', () => {
+  renderTable();
+  document.getElementById('overlay').classList.add('show');
+});
+document.getElementById('adminClose').addEventListener('click', () => {
+  document.getElementById('overlay').classList.remove('show');
+});
+document.getElementById('overlay').addEventListener('click', e => {
+  if (e.target.id === 'overlay') document.getElementById('overlay').classList.remove('show');
+});
+
+function renderTable() {
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = PEOPLE.map(p => `
+    <tr>
+      <td>${escapeHTML(p.name)}</td>
+      <td>${escapeHTML(p.dept)}</td>
+      <td>${escapeHTML(p.position || '')}</td>
+      <td style="font-weight:700;">${seatLabel(p.seat)}</td>
+      <td>
+        <button class="action-btn" data-edit="${p.id}">编辑</button>
+        <button class="action-btn danger" data-delete="${p.id}">删除</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+document.getElementById('tableBody').addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  const id = parseInt(btn.dataset.edit || btn.dataset.delete);
+  if (btn.dataset.edit) openForm(id);
+  if (btn.dataset.delete) {
+    const p = PEOPLE.find(x => x.id === id);
+    if (p && confirm('确定删除 ' + p.name + ' 吗？')) {
+      PEOPLE = PEOPLE.filter(x => x.id !== id);
+      rebuildSeatIndex();
+      savePeople();
+      if (currentPerson && currentPerson.id === id) {
+        currentPerson = null;
+        hidePersonInfo();
+      }
+      renderFloorPlan(currentPerson ? currentPerson.seat : null);
+      renderTable();
+    }
+  }
+});
+
+document.getElementById('btnAdd').addEventListener('click', () => openForm(null));
+
+// ========== 导入导出 ==========
+document.getElementById('btnImport').addEventListener('click', () => {
+  document.getElementById('importFile').click();
+});
+document.getElementById('importFile').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function() {
+    const text = reader.result;
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 2) { alert('文件内容不足'); return; }
+    const header = lines[0].split(/[,\t]/).map(h => h.trim());
+    const nameIdx = header.findIndex(h => h === '姓名');
+    const deptIdx = header.findIndex(h => h === '部门');
+    const seatIdx = header.findIndex(h => h === '座位号' || h === '工位');
+    const positionIdx = header.findIndex(h => h === '岗位');
+    if (nameIdx < 0 || deptIdx < 0 || seatIdx < 0) {
+      alert('CSV表头需包含：姓名、部门和座位号'); return;
+    }
+    const colorIdx = header.findIndex(h => h === '颜色');
+    const labelToDataSeat = {};
+    for (const [ds, dl] of Object.entries(DISPLAY_LABEL)) {
+      labelToDataSeat[dl] = ds;
+    }
+    const validSeats = new Set(getAllValidSeats());
+    let added = 0, updated = 0, cleared = 0, skipped = 0;
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(/[,\t]/).map(c => c.trim());
+      const name = cols[nameIdx];
+      const dept = cols[deptIdx];
+      const seatRaw = cols[seatIdx];
+      if (!seatRaw) { skipped++; continue; }
+      let seat = labelToDataSeat[seatRaw] || seatRaw;
+      if (!validSeats.has(seat)) { skipped++; continue; }
+      const color = (colorIdx >= 0 && cols[colorIdx]) ? cols[colorIdx] : PALETTE[i % PALETTE.length];
+      const position = (positionIdx >= 0 && cols[positionIdx]) ? cols[positionIdx] : '';
+      if (!name && !dept) {
+        const idx = PEOPLE.findIndex(p => p.seat === seat);
+        if (idx >= 0) { PEOPLE.splice(idx, 1); cleared++; }
+        continue;
+      }
+      const existing = PEOPLE.find(p => p.seat === seat);
+      if (existing) {
+        existing.name = name; existing.dept = dept; existing.position = position; existing.color = color;
+        updated++;
+      } else {
+        PEOPLE.push({ id: nextId++, name, dept, seat, position, color });
+        added++;
+      }
+    }
+    rebuildSeatIndex();
+    savePeople();
+    renderFloorPlan(currentPerson ? currentPerson.seat : null);
+    renderTable();
+    alert('导入完成！新增' + added + '人，更新' + updated + '人，清空' + cleared + '人，跳过' + skipped + '行');
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+document.getElementById('btnExport').addEventListener('click', () => {
+  let csv = '姓名,部门,座位号,岗位\n';
+  // 按座位顺序导出所有座位
+  ALL_SEATS.forEach(seat => {
+    const person = personBySeat(seat);
+    const name = person ? person.name : '';
+    const dept = person ? person.dept : '';
+    const position = person ? (person.position || '') : '';
+    csv += [name, dept, seatLabel(seat), position].join(',') + '\n';
+  });
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = '座位信息导出.csv'; a.click();
+  URL.revokeObjectURL(url);
+});
+
+// ========== 表单 ==========
+let editingPersonId = null;
+let isSubmitting = false;
+
+function openForm(editId, preselectedSeat) {
+  editingPersonId = editId || null;
+  const isEdit = !!editId;
+  document.getElementById('formTitle').textContent = isEdit ? '编辑员工' : '新增员工';
+  document.getElementById('formOverlay').classList.add('show');
+  document.querySelectorAll('.form-error').forEach(el => el.classList.remove('show'));
+
+  const seatSelect = document.getElementById('fSeat');
+  seatSelect.innerHTML = '<option value="">请选择</option>';
+  ALL_SEATS.forEach(s => {
+    const occupied = personBySeat(s);
+    const disabled = occupied && occupied.id !== editId ? ' disabled' : '';
+    seatSelect.innerHTML += `<option value="${s}"${disabled}>${seatLabel(s)}${disabled ? ' (已占用)' : ''}</option>`;
+  });
+
+  if (isEdit) {
+    const p = PEOPLE.find(x => x.id === editId);
+    document.getElementById('fName').value = p.name;
+    document.getElementById('fDept').value = p.dept;
+    document.getElementById('fPosition').value = p.position || '';
+    seatSelect.value = p.seat;
+  } else {
+    document.getElementById('fName').value = '';
+    document.getElementById('fDept').value = '';
+    document.getElementById('fPosition').value = '';
+    seatSelect.value = preselectedSeat || '';
+  }
+}
+
+function closeForm() {
+  document.getElementById('formOverlay').classList.remove('show');
+  editingPersonId = null;
+}
+
+function saveForm() {
+  if (isSubmitting) return;
+  isSubmitting = true;
+  const name = document.getElementById('fName').value.trim();
+  const dept = document.getElementById('fDept').value;
+  const position = document.getElementById('fPosition').value.trim();
+  const seat = document.getElementById('fSeat').value;
+  let valid = true;
+
+  if (!name || name.length < 1 || name.length > 20) {
+    document.getElementById('eName').textContent = '姓名必填，1-20字';
+    document.getElementById('eName').classList.add('show');
+    valid = false;
+  } else { document.getElementById('eName').classList.remove('show'); }
+
+  if (!dept) {
+    document.getElementById('eDept').textContent = '请选择部门';
+    document.getElementById('eDept').classList.add('show');
+    valid = false;
+  } else { document.getElementById('eDept').classList.remove('show'); }
+
+  if (!seat) {
+    document.getElementById('eSeat').textContent = '请选择座位';
+    document.getElementById('eSeat').classList.add('show');
+    valid = false;
+  } else {
+    const existing = personBySeat(seat);
+    if (existing && existing.id !== editingPersonId) {
+      document.getElementById('eSeat').textContent = '此座位已被 ' + existing.name + ' 占用';
+      document.getElementById('eSeat').classList.add('show');
+      valid = false;
+    } else { document.getElementById('eSeat').classList.remove('show'); }
+  }
+
+  if (!valid) {
+    isSubmitting = false;
+    return;
+  }
+
+  try {
+    if (editingPersonId) {
+      const p = PEOPLE.find(x => x.id === editingPersonId);
+      p.name = name; p.dept = dept; p.position = position; p.seat = seat;
+    } else {
+      PEOPLE.push({ id: nextId++, name, dept, seat, position });
+    }
+    rebuildSeatIndex();
+    savePeople();
+    closeForm();
+    renderFloorPlan(currentPerson ? currentPerson.seat : null);
+    renderTable();
+    if (currentPerson && (!personBySeat(currentPerson.seat) || personBySeat(currentPerson.seat).name !== currentPerson.name)) {
+      currentPerson = null;
+      hidePersonInfo();
+    }
+  } finally {
+    isSubmitting = false;
+  }
+}
+
+document.getElementById('formClose').addEventListener('click', closeForm);
+document.getElementById('formCancel').addEventListener('click', closeForm);
+document.getElementById('formSave').addEventListener('click', saveForm);
+document.getElementById('formOverlay').addEventListener('click', e => {
+  if (e.target.id === 'formOverlay') closeForm();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('formOverlay').classList.contains('show')) closeForm();
+    else if (document.getElementById('overlay').classList.contains('show')) document.getElementById('overlay').classList.remove('show');
+  }
+});
+
+// ========== 初始化 ==========
+renderHistory();
+renderFloorPlan(null);
+searchInput.focus();
+
+// iOS PWA standalone keyboard fix
+searchInput.addEventListener('touchstart', function(e) {
+  e.stopPropagation();
+}, { passive: true });
+
+searchInput.addEventListener('click', function() {
+  this.focus();
+  // readonly toggle trick for iOS PWA
+  this.removeAttribute('readonly');
+});
+
+// ========== Register PWA service worker ==========
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW registration failed:', err));
+  });
+}
+</script>
+</body>
+</html>
