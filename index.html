@@ -688,12 +688,27 @@ input, select, textarea { font-family: inherit; color: var(--fg); }
 }
 .fp-room-big { width: 340px; min-width: 340px; }
 
-/* 人力总监办公室: 仅显示 D1 工位 (无文字标签) */
+/* 人力总监办公室: D1 工位居中, 文字标签绝对定位 (与薪酬组标签同位置) */
 .fp-room-big-with-desk {
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 16px;
+  position: relative;
+}
+/* 标签: 绝对定位在容器中心, rotate -90° 竖排, 精确居中 */
+.fp-room-big-label {
+  position: absolute;
+  top: 50%;
+  left: calc(50% + 150px);
+  transform: translate(-50%, -50%) rotate(-90deg);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--fg-muted);
+  font-family: var(--font-display);
+  letter-spacing: 2px;
+  z-index: 2;
+  white-space: nowrap;
 }
 .fp-room-big-desk-slot {
   width: 56px;
@@ -2170,6 +2185,7 @@ function renderFloorPlan(highlightSeat) {
   const html = `
     <div class="fp-top">
       <div class="fp-room-lg fp-room-big fp-room-big-with-desk" style="width: 340px;">
+        <span class="fp-room-big-label">人力总监办公室</span>
         ${d('D1')}
       </div>
       <div class="fp-room-salary">
