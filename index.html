@@ -2085,7 +2085,10 @@ function startVoiceFind() {
         voiceListening = false;
         console.error('[voice] baidu recognize failed:', e);
         const msg = e && e.message ? e.message : '';
-        let m = '未听清,请手动输入';
+        // 调试期: 把百度原始错误暴露出来
+        showVoiceToast(`识别失败: ${msg} (查看控制台)`);
+        console.warn('[voice] raw baidu err_msg:', msg);
+        let m = `未听清: ${msg}`;
         if (/quota|times|limit/i.test(msg)) m = '语音额度已用完,请手动输入';
         else if (/access|token|auth/i.test(msg)) m = '语音服务未授权,请手动输入';
         speak(m); showVoiceToast(m);
