@@ -1865,10 +1865,8 @@ function handleSearchInput() {
 // ========== 语音听写找同事 (百度短语音识别) ==========
 // 整页触摸触发: iPad 上来访者点屏幕 → 语音提示 → 浏览器录音 → 百度 STT → 自动跳转
 // iOS Safari 不支持 webkitSpeechRecognition, 因此改用 MediaRecorder + 百度 vop.baidu.com/server_api
-const BAIDU_API_KEY = 'dHCj6AaCqJSo5hz8W3dIEwDp';
-const BAIDU_SECRET_KEY = '3QNMMVnisKgcfzhoFDgAnaj0yP4J2DDo';
-let baiduAccessToken = '';
-let baiduTokenExpireAt = 0;
+// Key 已迁到 Cloudflare Worker (env.BAIDU_API_KEY / env.BAIDU_SECRET_KEY)
+// 前端不再持有 Key, 改用 Worker URL 同源代理
 
 function speak(text) {
   if (!('speechSynthesis' in window)) return;
@@ -1877,24 +1875,6 @@ function speak(text) {
   u.rate = 1;
   window.speechSynthesis.cancel();
   window.speechSynthesis.speak(u);
-}
-
-// 获取百度 access_token (有效期 30 天, 缓存到内存)
-async function getBaiduAccessToken() {
-  const now = Date.now();
-  if (baiduAccessToken && now < baiduTokenExpireAt) return baiduAccessToken;
-  const url = `https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=${BAIDU_API_KEY}&client_secret=${BAIDU_SECRET_KEY}`;
-  const resp = await fetch(url, { method: 'POST' });
-  const data = await resp.json();
-  if (data.access_token) {
-    baiduAccessToken = data.access_token;
-    baiduTokenExpireAt = now + 29 * 24 * 60 * 60 * 1000; // 提前 1 天过期
-    console.log('[baidu] token ok, len=', baiduAccessToken.length);
-  } else {
-    console.error('[baidu] token failed:', data);
-    throw new Error('获取百度 access_token 失败');
-  }
-  return baiduAccessToken;
 }
 
 // 录指定毫秒后自动停止 (iOS Safari MediaRecorder 在 touchend 用户手势下启动)
@@ -1975,21 +1955,18 @@ async function blobToWav16k(blob) {
   return new Blob([buffer], { type: 'audio/wav' });
 }
 
-// 调用百度短语音识别 (server_api)
+// 调用百度短语音识别 (走 Cloudflare Worker 同源代理, 解决 iOS Safari/PWA 跨域 fetch 限制)
+const VOICE_WORKER_URL = 'https://setfind-voice.5y249p86rv.workers.dev/recognize';
 async function baiduRecognize(audioBlob) {
-  const token = await getBaiduAccessToken();
   const b64 = await blobToBase64Simple(audioBlob);
   const body = {
     format: 'wav',
     rate: 16000,
     channel: 1,
-    cuid: 'setfind-demo-ipad',
-    token: token,
     speech: b64,
     len: audioBlob.size,
-    dev_pid: 80001 // 极速版输入法模型 (pro_api)
   };
-  const resp = await fetch('https://vop.baidu.com/pro_api', {
+  const resp = await fetch(VOICE_WORKER_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
