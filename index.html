@@ -227,6 +227,20 @@ input, select, textarea { font-family: inherit; color: var(--fg); }
   position: relative;
   z-index: 1;
 }
+/* 语音提示: 轻触屏幕可语音找同事 */
+.home-voice-hint {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--accent);
+  font-weight: 500;
+  position: relative;
+  z-index: 1;
+  animation: voiceHintPulse 2.4s ease-in-out infinite;
+}
+@keyframes voiceHintPulse {
+  0%, 100% { opacity: 0.65; }
+  50%      { opacity: 1; }
+}
 
 /* Title ambient particles */
 .title-particle {
@@ -1417,6 +1431,7 @@ button:focus-visible, .icon-btn:focus-visible, .back-btn:focus-visible, .admin-c
         </span><span class="search-cursor" aria-hidden="true"></span><span class="accent">人力同事</span><br><span class="search-action search-action-delayed"><span class="search-char">的</span><span class="search-char">工</span><span class="search-char">位</span></span>
       </h1>
       <p class="home-subtitle">搜索姓名或拼音首字母，即可看到精确位置</p>
+      <p class="home-voice-hint" id="voiceHint">💡 轻触屏幕任意位置，可语音说出要找的同事</p>
     </div>
 
     <div class="home-content">
@@ -1845,6 +1860,287 @@ function handleSearchInput() {
   } else {
     hideSuggestions();
   }
+}
+
+// ========== 语音听写找同事 (百度短语音识别) ==========
+// 整页触摸触发: iPad 上来访者点屏幕 → 语音提示 → 浏览器录音 → 百度 STT → 自动跳转
+// iOS Safari 不支持 webkitSpeechRecognition, 因此改用 MediaRecorder + 百度 vop.baidu.com/server_api
+const BAIDU_API_KEY = 'dHCj6AaCqJSo5hz8W3dIEwDp';
+const BAIDU_SECRET_KEY = '3QNMMVnisKgcfzhoFDgAnaj0yP4J2DDo';
+let baiduAccessToken = '';
+let baiduTokenExpireAt = 0;
+
+function speak(text) {
+  if (!('speechSynthesis' in window)) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'zh-CN';
+  u.rate = 1;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(u);
+}
+
+// 获取百度 access_token (有效期 30 天, 缓存到内存)
+async function getBaiduAccessToken() {
+  const now = Date.now();
+  if (baiduAccessToken && now < baiduTokenExpireAt) return baiduAccessToken;
+  const url = `https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=${BAIDU_API_KEY}&client_secret=${BAIDU_SECRET_KEY}`;
+  const resp = await fetch(url, { method: 'POST' });
+  const data = await resp.json();
+  if (data.access_token) {
+    baiduAccessToken = data.access_token;
+    baiduTokenExpireAt = now + 29 * 24 * 60 * 60 * 1000; // 提前 1 天过期
+    console.log('[baidu] token ok, len=', baiduAccessToken.length);
+  } else {
+    console.error('[baidu] token failed:', data);
+    throw new Error('获取百度 access_token 失败');
+  }
+  return baiduAccessToken;
+}
+
+// 录指定毫秒后自动停止 (iOS Safari MediaRecorder 在 touchend 用户手势下启动)
+function recordAudio(ms = 2200) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      let mimeType = '';
+      const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
+      for (const c of candidates) {
+        if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(c)) {
+          mimeType = c;
+          break;
+        }
+      }
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const chunks = [];
+      recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+      recorder.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        resolve(new Blob(chunks, { type: mimeType || 'audio/webm' }));
+      };
+      recorder.onerror = (e) => { reject(e.error || e); };
+      recorder.start();
+      setTimeout(() => { try { recorder.stop(); } catch (_) {} }, ms);
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+function blobToBase64Simple(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const r = reader.result;
+      const idx = r.indexOf(',');
+      resolve(idx >= 0 ? r.slice(idx + 1) : r);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+// 把任意音频 Blob 转 16kHz / 16bit / mono 的 PCM WAV (百度短语音识别最佳格式)
+async function blobToWav16k(blob) {
+  const arrayBuffer = await blob.arrayBuffer();
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const ctx = new AC({ sampleRate: 16000 });
+  const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
+  const channel = audioBuffer.getChannelData(0);
+  const pcm = new Int16Array(channel.length);
+  for (let i = 0; i < channel.length; i++) {
+    const s = Math.max(-1, Math.min(1, channel[i]));
+    pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+  const sampleRate = 16000, numChannels = 1, bitsPerSample = 16;
+  const byteRate = sampleRate * numChannels * bitsPerSample / 8;
+  const blockAlign = numChannels * bitsPerSample / 8;
+  const dataSize = pcm.byteLength;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+  view.setUint32(0, 0x52494646, false); // "RIFF"
+  view.setUint32(4, 36 + dataSize, true);
+  view.setUint32(8, 0x57415645, false); // "WAVE"
+  view.setUint32(12, 0x666d7420, false); // "fmt "
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitsPerSample, true);
+  view.setUint32(36, 0x64617461, false); // "data"
+  view.setUint32(40, dataSize, true);
+  new Uint8Array(buffer, 44).set(new Uint8Array(pcm.buffer));
+  ctx.close().catch(() => {});
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+// 调用百度短语音识别 (server_api)
+async function baiduRecognize(audioBlob) {
+  const token = await getBaiduAccessToken();
+  const b64 = await blobToBase64Simple(audioBlob);
+  const body = {
+    format: 'wav',
+    rate: 16000,
+    channel: 1,
+    cuid: 'setfind-demo-ipad',
+    token: token,
+    speech: b64,
+    len: audioBlob.size,
+    dev_pid: 1537 // 普通话
+  };
+  const resp = await fetch('https://vop.baidu.com/server_api', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await resp.json();
+  console.log('[baidu] result:', data);
+  if (data.err_no === 0 && data.result && data.result.length > 0) {
+    return data.result[0];
+  }
+  throw new Error(data.err_msg || ('err_no=' + data.err_no));
+}
+
+let voiceListening = false;
+
+function startVoiceFind() {
+  if (voiceListening) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    const m = '当前浏览器不支持录音,请手动输入';
+    speak(m); showVoiceToast(m);
+    return;
+  }
+  voiceListening = true;
+  showVoiceToast('请说出要查找的同事姓名...');
+  speak('请说出要查找的同事姓名');
+  console.log('[voice] start recording (baidu STT)');
+
+  // 等播报提示语结束再开始录, 避免录到播报音
+  setTimeout(async () => {
+    if (!voiceListening) return;
+    showVoiceToast('正在聆听...');
+    let rawBlob;
+    try {
+      rawBlob = await recordAudio(2200);
+      console.log('[voice] recorded size=', rawBlob.size, 'type=', rawBlob.type);
+    } catch (e) {
+      voiceListening = false;
+      console.error('[voice] record failed:', e);
+      let m = '麦克风不可用,请手动输入';
+      if (e && (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError')) {
+        m = '麦克风权限被拒绝,请手动输入';
+      }
+      speak(m); showVoiceToast(m);
+      return;
+    }
+    if (!voiceListening) return;
+    let wavBlob;
+    try {
+      wavBlob = await blobToWav16k(rawBlob);
+      console.log('[voice] wav size=', wavBlob.size);
+    } catch (e) {
+      voiceListening = false;
+      console.error('[voice] wav convert failed:', e);
+      const m = '音频转换失败,请手动输入';
+      speak(m); showVoiceToast(m);
+      return;
+    }
+    try {
+      const text = await baiduRecognize(wavBlob);
+      voiceListening = false;
+      let transcript = String(text).trim();
+      transcript = transcript.replace(/[.,。，!！?？;；:：、\s]+/g, '');
+      console.log('[voice] baidu transcript=', transcript);
+      handleVoiceResult(transcript);
+    } catch (e) {
+      voiceListening = false;
+      console.error('[voice] baidu recognize failed:', e);
+      const msg = e && e.message ? e.message : '';
+      let m = '未听清,请手动输入';
+      if (/quota|times|limit/i.test(msg)) m = '语音额度已用完,请手动输入';
+      else if (/access|token|auth/i.test(msg)) m = '语音服务未授权,请手动输入';
+      speak(m); showVoiceToast(m);
+    }
+  }, 1200);
+}
+
+function cancelVoiceFind() {
+  voiceListening = false;
+  console.log('[voice] cancelled');
+}
+
+// 视觉提示 toast
+let voiceToastTimer = null;
+function showVoiceToast(text) {
+  let toast = document.getElementById('voiceToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'voiceToast';
+    toast.style.cssText = 'position:fixed;top:80px;left:50%;transform:translateX(-50%);background:rgba(56,178,172,0.95);color:#fff;padding:14px 24px;border-radius:16px;font-size:16px;font-weight:600;z-index:9999;box-shadow:0 6px 20px rgba(0,0,0,0.2);transition:opacity 0.3s;opacity:1;';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = text;
+  toast.style.opacity = '1';
+  clearTimeout(voiceToastTimer);
+  voiceToastTimer = setTimeout(() => {
+    toast.style.opacity = '0';
+  }, 3500);
+}
+
+function handleVoiceResult(text) {
+  const results = searchPeople(text);
+  if (results.length === 1) {
+    speak(`已找到${results[0].name}`);
+    goToMap(results[0]);
+  } else if (results.length > 1) {
+    const exact = results.find(p => p.name === text || p.name.includes(text));
+    if (exact) {
+      speak(`已找到${exact.name}`);
+      goToMap(exact);
+    } else {
+      searchInput.value = text;
+      handleSearchInput();
+      speak(`找到多个匹配,请手动选择`);
+      searchInput.focus();
+    }
+  } else {
+    speak('未找到,请手动输入');
+    searchInput.value = text;
+    handleSearchInput();
+    searchInput.focus();
+  }
+}
+
+// 整页触摸触发: 仅在 home 页面生效, 避免在 map 页误触
+if (pageHome) {
+  let voiceTouchStartTime = 0;
+  pageHome.addEventListener('touchstart', (e) => {
+    const target = e.target;
+    if (target.closest('#searchInput, button, .search-suggestion-item, .recent-tag, .quick-enter-btn')) {
+      return;
+    }
+    voiceTouchStartTime = Date.now();
+  }, { passive: true });
+  pageHome.addEventListener('touchend', (e) => {
+    if (!voiceTouchStartTime) return;
+    const dt = Date.now() - voiceTouchStartTime;
+    voiceTouchStartTime = 0;
+    if (dt > 500) return;
+    const target = e.target;
+    if (target.closest('#searchInput, button, .search-suggestion-item, .recent-tag, .quick-enter-btn')) {
+      return;
+    }
+    e.preventDefault();
+    startVoiceFind();
+  });
+  pageHome.addEventListener('click', (e) => {
+    const target = e.target;
+    if (target.closest('#searchInput, button, .search-suggestion-item, .recent-tag, .quick-enter-btn')) {
+      return;
+    }
+    startVoiceFind();
+  });
 }
 
 searchInput.addEventListener('input', () => {
