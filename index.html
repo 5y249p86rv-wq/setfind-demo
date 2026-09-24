@@ -2016,53 +2016,97 @@ function startVoiceFind() {
   speak('请说出要查找的同事姓名');
   console.log('[voice] start recording (baidu STT)');
 
-  // 等播报提示语结束再开始录, 避免录到播报音
-  setTimeout(async () => {
-    if (!voiceListening) return;
-    showVoiceToast('正在聆听...');
-    let rawBlob;
-    try {
-      rawBlob = await recordAudio(2200);
-      console.log('[voice] recorded size=', rawBlob.size, 'type=', rawBlob.type);
-    } catch (e) {
-      voiceListening = false;
-      console.error('[voice] record failed:', e);
-      let m = '麦克风不可用,请手动输入';
-      if (e && (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError')) {
-        m = '麦克风权限被拒绝,请手动输入';
+  // 先请求麦克风权限并启动录音 (用户手势内, iOS 必须)
+  let stream;
+  try {
+    stream = navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    voiceListening = false;
+    console.error('[voice] getUserMedia sync failed:', e);
+    const m = '麦克风不可用,请手动输入';
+    speak(m); showVoiceToast(m);
+    return;
+  }
+  // 异步取流, 然后播报结束立即进入录音
+  stream.then(async (mediaStream) => {
+    let mimeType = '';
+    const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
+    for (const c of candidates) {
+      if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(c)) {
+        mimeType = c;
+        break;
       }
-      speak(m); showVoiceToast(m);
-      return;
     }
-    if (!voiceListening) return;
-    let wavBlob;
-    try {
-      wavBlob = await blobToWav16k(rawBlob);
-      console.log('[voice] wav size=', wavBlob.size);
-    } catch (e) {
+    const recorder = new MediaRecorder(mediaStream, mimeType ? { mimeType } : undefined);
+    const chunks = [];
+    recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+
+    // 等 TTS 播报结束再开始录 (避免录到播报音)
+    const waitMs = 1500;
+    console.log('[voice] waiting', waitMs, 'ms for TTS end, then record 4000ms');
+    showVoiceToast(`请说出姓名(聆听 4 秒)...`);
+    setTimeout(() => {
+      if (!voiceListening) {
+        mediaStream.getTracks().forEach(t => t.stop());
+        return;
+      }
+      showVoiceToast('正在聆听...');
+      recorder.start();
+      setTimeout(async () => {
+        try { recorder.stop(); } catch (_) {}
+      }, 4000);
+    }, waitMs);
+
+    recorder.onstop = async () => {
+      mediaStream.getTracks().forEach(t => t.stop());
+      if (!voiceListening) return;
+      const rawBlob = new Blob(chunks, { type: mimeType || 'audio/webm' });
+      console.log('[voice] recorded size=', rawBlob.size, 'type=', rawBlob.type);
+      showVoiceToast('识别中...');
+      let wavBlob;
+      try {
+        wavBlob = await blobToWav16k(rawBlob);
+        console.log('[voice] wav size=', wavBlob.size);
+      } catch (e) {
+        voiceListening = false;
+        console.error('[voice] wav convert failed:', e);
+        const m = '音频转换失败,请手动输入';
+        speak(m); showVoiceToast(m);
+        return;
+      }
+      try {
+        const text = await baiduRecognize(wavBlob);
+        voiceListening = false;
+        let transcript = String(text).trim();
+        transcript = transcript.replace(/[.,。，!！?？;；:：、\s]+/g, '');
+        console.log('[voice] baidu transcript=', transcript);
+        handleVoiceResult(transcript);
+      } catch (e) {
+        voiceListening = false;
+        console.error('[voice] baidu recognize failed:', e);
+        const msg = e && e.message ? e.message : '';
+        let m = '未听清,请手动输入';
+        if (/quota|times|limit/i.test(msg)) m = '语音额度已用完,请手动输入';
+        else if (/access|token|auth/i.test(msg)) m = '语音服务未授权,请手动输入';
+        speak(m); showVoiceToast(m);
+      }
+    };
+    recorder.onerror = (e) => {
       voiceListening = false;
-      console.error('[voice] wav convert failed:', e);
-      const m = '音频转换失败,请手动输入';
+      console.error('[voice] recorder error:', e);
+      mediaStream.getTracks().forEach(t => t.stop());
+      const m = '录音失败,请手动输入';
       speak(m); showVoiceToast(m);
-      return;
+    };
+  }).catch((e) => {
+    voiceListening = false;
+    console.error('[voice] getUserMedia failed:', e);
+    let m = '麦克风不可用,请手动输入';
+    if (e && (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError')) {
+      m = '麦克风权限被拒绝,请手动输入';
     }
-    try {
-      const text = await baiduRecognize(wavBlob);
-      voiceListening = false;
-      let transcript = String(text).trim();
-      transcript = transcript.replace(/[.,。，!！?？;；:：、\s]+/g, '');
-      console.log('[voice] baidu transcript=', transcript);
-      handleVoiceResult(transcript);
-    } catch (e) {
-      voiceListening = false;
-      console.error('[voice] baidu recognize failed:', e);
-      const msg = e && e.message ? e.message : '';
-      let m = '未听清,请手动输入';
-      if (/quota|times|limit/i.test(msg)) m = '语音额度已用完,请手动输入';
-      else if (/access|token|auth/i.test(msg)) m = '语音服务未授权,请手动输入';
-      speak(m); showVoiceToast(m);
-    }
-  }, 1200);
+    speak(m); showVoiceToast(m);
+  });
 }
 
 function cancelVoiceFind() {
