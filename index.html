@@ -1987,9 +1987,9 @@ async function baiduRecognize(audioBlob) {
     token: token,
     speech: b64,
     len: audioBlob.size,
-    dev_pid: 1537 // 普通话
+    dev_pid: 80001 // 极速版输入法模型 (pro_api)
   };
-  const resp = await fetch('https://vop.baidu.com/server_api', {
+  const resp = await fetch('https://vop.baidu.com/pro_api', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
