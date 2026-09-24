@@ -1919,9 +1919,8 @@ function blobToBase64Simple(blob) {
   });
 }
 
-// 把任意音频 Blob 转 16kHz / 16bit / mono 的 PCM 数据, 直接转 base64 (跳过 WAV 头, 节省编码时间和百度额外转换)
-// 百度短语音识别也支持裸 PCM
-function blobToPcm16kBase64(blob) {
+// 把任意音频 Blob 转 16kHz / 16bit / mono 的 PCM binary 数据 (跳过 base64 编码, 直接走 RAW 上传)
+function blobToPcm16kBinary(blob) {
   return new Promise(async (resolve, reject) => {
     try {
       const arrayBuffer = await blob.arrayBuffer();
@@ -1934,16 +1933,9 @@ function blobToPcm16kBase64(blob) {
         const s = Math.max(-1, Math.min(1, channel[i]));
         pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
       }
-      // Uint8Array -> base64 (一次性)
-      const bytes = new Uint8Array(pcm.buffer);
-      let binary = '';
-      const chunk = 8192;
-      for (let i = 0; i < bytes.length; i += chunk) {
-        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-      }
-      const b64 = btoa(binary);
       ctx.close().catch(() => {});
-      resolve({ pcmBase64: b64, len: bytes.byteLength });
+      // 直接返回 ArrayBuffer (PCM binary), 不做 base64 编码
+      resolve(pcm.buffer);
     } catch (e) {
       reject(e);
     }
@@ -1951,19 +1943,13 @@ function blobToPcm16kBase64(blob) {
 }
 
 // 调用百度短语音识别 (走 Cloudflare Worker 同源代理, 解决 iOS Safari/PWA 跨域 fetch 限制)
+// RAW 方式: 直接发 PCM binary body, 跳过 base64 编码
 const VOICE_WORKER_URL = 'https://setfind-voice.5y249p86rv.workers.dev/recognize';
-async function baiduRecognize(pcmBase64, len) {
-  const body = {
-    format: 'pcm',
-    rate: 16000,
-    channel: 1,
-    speech: pcmBase64,
-    len: len,
-  };
+async function baiduRecognize(pcmArrayBuffer) {
   const resp = await fetch(VOICE_WORKER_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    headers: { 'Content-Type': 'audio/pcm;rate=16000' },
+    body: pcmArrayBuffer
   });
   const data = await resp.json();
   console.log('[baidu] result:', data);
@@ -2076,12 +2062,10 @@ function startVoiceFind() {
       const rawBlob = new Blob(chunks, { type: mimeType || 'audio/webm' });
       console.log('[voice] recorded size=', rawBlob.size, 'type=', rawBlob.type);
       showVoiceToast('识别中...');
-      let pcmB64, pcmLen;
+      let pcmBuf;
       try {
-        const r = await blobToPcm16kBase64(rawBlob);
-        pcmB64 = r.pcmBase64;
-        pcmLen = r.len;
-        console.log('[voice] pcm len=', pcmLen);
+        pcmBuf = await blobToPcm16kBinary(rawBlob);
+        console.log('[voice] pcm len=', pcmBuf.byteLength);
       } catch (e) {
         voiceListening = false;
         console.error('[voice] pcm convert failed:', e);
@@ -2090,7 +2074,7 @@ function startVoiceFind() {
         return;
       }
       try {
-        const text = await baiduRecognize(pcmB64, pcmLen);
+        const text = await baiduRecognize(pcmBuf);
         voiceListening = false;
         let transcript = String(text).trim();
         transcript = transcript.replace(/[.,。，!！?？;；:：、\s]+/g, '');
