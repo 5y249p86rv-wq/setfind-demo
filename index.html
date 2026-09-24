@@ -2018,21 +2018,63 @@ function startVoiceFind() {
     const chunks = [];
     recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
 
-    // 等 TTS 播报结束再开始录 (避免录到播报音)
-    const waitMs = 1500;
-    console.log('[voice] waiting', waitMs, 'ms for TTS end, then record 4000ms');
-    showVoiceToast(`请说出姓名(聆听 4 秒)...`);
+    // 边录边用 Web Audio 检测音量: 静音 1.2s 自动停止; 最大 5s 超时
+    const AC = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AC();
+    const source = audioCtx.createMediaStreamSource(mediaStream);
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 512;
+    source.connect(analyser);
+    const buf = new Uint8Array(analyser.fftSize);
+    let silentMs = 0;
+    let spokenMs = 0;
+    let stopped = false;
+    const SILENCE_THRESHOLD = 8; // 0~255, iPad 环境噪声通常 1-3
+    const SILENCE_TO_STOP = 1200; // 静音超过这个时长自动停
+    const MAX_DURATION = 5000;
+    const START_DELAY = 600; // 等 TTS 结束
+    let startTime = 0;
+
+    showVoiceToast('请说出姓名...');
     setTimeout(() => {
       if (!voiceListening) {
         mediaStream.getTracks().forEach(t => t.stop());
+        audioCtx.close().catch(() => {});
         return;
       }
-      showVoiceToast('正在聆听...');
-      recorder.start();
-      setTimeout(async () => {
-        try { recorder.stop(); } catch (_) {}
-      }, 4000);
-    }, waitMs);
+      try {
+        recorder.start();
+        startTime = Date.now();
+        showVoiceToast('正在聆听...');
+        const tick = setInterval(() => {
+          if (stopped || !voiceListening) { clearInterval(tick); return; }
+          analyser.getByteTimeDomainData(buf);
+          // 计算音量 (max abs deviation from 128)
+          let max = 0;
+          for (let i = 0; i < buf.length; i++) {
+            const v = Math.abs(buf[i] - 128);
+            if (v > max) max = v;
+          }
+          if (max > SILENCE_THRESHOLD) {
+            silentMs = 0;
+            spokenMs += 100;
+          } else {
+            silentMs += 100;
+          }
+          const elapsed = Date.now() - startTime;
+          // 条件: 已说过话 + 静音够长 -> 停; 或 总时长超限
+          if ((spokenMs > 300 && silentMs >= SILENCE_TO_STOP) || elapsed >= MAX_DURATION) {
+            stopped = true;
+            clearInterval(tick);
+            try { recorder.stop(); } catch (_) {}
+          }
+        }, 100);
+      } catch (e) {
+        console.error('[voice] recorder.start failed:', e);
+        voiceListening = false;
+        speak('录音失败,请手动输入'); showVoiceToast('录音失败,请手动输入');
+      }
+    }, START_DELAY);
 
     recorder.onstop = async () => {
       mediaStream.getTracks().forEach(t => t.stop());
